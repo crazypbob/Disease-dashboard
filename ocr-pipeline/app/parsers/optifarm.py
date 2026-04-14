@@ -212,6 +212,115 @@ class OptifarmParser(BaseParser):
 
         return out
 
+    def _serum_app_mh_judgements_from_pdf_tables(self, pdf_path: Path) -> dict:
+        """
+        옵티팜 혈청 결과서 중 APP(ApxIV) / MH 테이블에서 '결과 판독' 텍스트를 집계해 요약 판정을 만든다.
+        - APP/MH 표는 S/P 값 스케일이 제각각이라 수치 기반 임계값 판정은 하지 않는다.
+        - 대신 각 행의 '결과 판독'(음성/양성/의심 등)을 모아 전북대 집계 로직을 재사용한다.
+        """
+        try:
+            tables = self._extract_pdf_tables(pdf_path)
+        except Exception:
+            tables = []
+
+        def norm(s: str) -> str:
+            return re.sub(r'\s+', '', (s or '')).lower()
+
+        def group_ranges(group_row: list[str]) -> dict:
+            """
+            1행(그룹 헤더)에서 그룹명(APP/MH 등) 시작 컬럼을 찾아 range를 만든다.
+            pdfplumber는 병합셀을 빈 문자열로 뿌리기도 해서, 'APP'가 col1에 있고 col2는 ''인 형태가 흔하다.
+            """
+            starts: list[tuple[int, str]] = []
+            for i, cell in enumerate(group_row):
+                c = norm(cell)
+                if c:
+                    starts.append((i, c))
+            # 마지막 sentinel
+            starts.append((len(group_row), ''))
+            ranges: dict[str, tuple[int, int]] = {}
+            for idx in range(len(starts) - 1):
+                s_i, name = starts[idx]
+                e_i, _ = starts[idx + 1]
+                if not name:
+                    continue
+                ranges[name] = (s_i, e_i)
+            return ranges
+
+        out: dict = {}
+        for table in tables or []:
+            if len(table) < 3:
+                continue
+
+            group_row = [str(x or '') for x in (table[0] or [])]
+            sub_row = [str(x or '') for x in (table[1] or [])]
+            joined = '|'.join([norm(x) for x in group_row + sub_row])
+            if not (('app' in joined or 'apxiv' in joined) and 'mh' in joined):
+                continue
+
+            ranges = group_ranges(group_row)
+
+            def find_judge_col(group_kw: tuple[str, ...]) -> list[int]:
+                cols: list[int] = []
+                # 그룹명을 정확히 못 잡는 경우를 대비해, group_row에서 키워드가 들어간 시작점을 직접 찾는다.
+                starts = [i for i, c in enumerate(group_row) if any(k in norm(c) for k in group_kw)]
+                if starts:
+                    s0 = starts[0]
+                    # 다음 non-empty group cell까지가 range
+                    e0 = len(group_row)
+                    for j in range(s0 + 1, len(group_row)):
+                        if norm(group_row[j]):
+                            e0 = j
+                            break
+                    for i in range(s0, e0):
+                        h = norm(sub_row[i] if i < len(sub_row) else '')
+                        if ('판독' in h or '판정' in h or '결과' in h):
+                            cols.append(i)
+                else:
+                    # group_ranges에 잡힌 경우(예: 'appapxiv' 같은 normalize된 name)
+                    for name, (s_i, e_i) in ranges.items():
+                        if any(k in name for k in group_kw):
+                            for i in range(s_i, e_i):
+                                h = norm(sub_row[i] if i < len(sub_row) else '')
+                                if ('판독' in h or '판정' in h or '결과' in h):
+                                    cols.append(i)
+                return cols
+
+            app_j_cols = find_judge_col(('app', 'apxiv'))
+            mh_j_cols = find_judge_col(('mh',))
+
+            app_judgements: list[str] = []
+            mh_judgements: list[str] = []
+            for row in table[2:]:
+                if not row:
+                    continue
+                label = (row[0] or '').strip()
+                if not label or '평균' in label:
+                    continue
+                for c in app_j_cols:
+                    if c < len(row):
+                        v = (row[c] or '').strip()
+                        if v:
+                            app_judgements.append(v)
+                for c in mh_j_cols:
+                    if c < len(row):
+                        v = (row[c] or '').strip()
+                        if v:
+                            mh_judgements.append(v)
+
+            app_agg = JbnuParser._aggregate_judgements(app_judgements)
+            mh_agg = JbnuParser._aggregate_judgements(mh_judgements)
+
+            if app_agg:
+                out['APP_항체'] = app_agg
+            if mh_agg:
+                out['MH_항체'] = mh_agg
+
+            if out:
+                return out
+
+        return out
+
     @staticmethod
     def _looks_like_optifarm_antibiotic_susceptibility(text: str) -> bool:
         """
@@ -235,6 +344,14 @@ class OptifarmParser(BaseParser):
     def parse_report(self, text: str, filename: str, pdf_path=None) -> dict:
         row = super().parse_report(text, filename, pdf_path=pdf_path)
         검사종류 = str(row.get('검사종류') or '')
+
+        # import 단계에서 pdf 링크를 만들 수 있도록 NAS 상대경로(월/파일명)를 채운다.
+        if not row.get('PDF_파일ID'):
+            date = str(row.get('날짜') or '').strip()
+            if len(date) >= 7:
+                base = Path(filename).name
+                row['PDF_파일ID'] = f"{date[:7]}/{base}"
+
         # (1) 세균 결과서 + 항생제 감수성(내성) 표: 결과지 존재만 매트릭스에 표시
         if '세균' in 검사종류 or self._looks_like_optifarm_antibiotic_susceptibility(text):
             row['항생제_감수성'] = 'V'
@@ -245,6 +362,13 @@ class OptifarmParser(BaseParser):
             return row
 
         if pdf_path:
+            # APP/MH 판독이 있는 혈청 테이블이면 먼저 채운다.
+            appmh = self._serum_app_mh_judgements_from_pdf_tables(Path(pdf_path))
+            if appmh.get('APP_항체'):
+                row['APP_항체'] = appmh['APP_항체']
+            if appmh.get('MH_항체'):
+                row['MH_항체'] = appmh['MH_항체']
+
             tbl = self._prrs_serum_from_pdf_tables(Path(pdf_path))
             if tbl.get('PRRS_항체'):
                 row['PRRS_항체'] = tbl['PRRS_항체']
@@ -252,6 +376,10 @@ class OptifarmParser(BaseParser):
                 row['판정_미해독'] = tbl.get('판정_미해독', '0')
                 if tbl.get('PRRS_S/P'):
                     row['PRRS_S/P'] = tbl['PRRS_S/P']
+                return row
+
+            # PRRS가 없어도 APP/MH만 있는 혈청 결과서가 있을 수 있음
+            if row.get('APP_항체') or row.get('MH_항체'):
                 return row
 
         combined = strip_serum_criteria_footer(filename + '\n' + text)

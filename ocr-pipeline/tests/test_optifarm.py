@@ -80,6 +80,7 @@ class TestOptifarmParseReport(unittest.TestCase):
         self.assertEqual(row["농장명"], "놀뫼농장")
         self.assertEqual(row["PRRS_결과"], "음성")
         self.assertEqual(row["PED_결과"], "양성")
+        self.assertEqual(row.get("PDF_파일ID"), "2026-03/20260320_(항원) 26-00009 놀뫼농장.pdf")
 
     def test_bacteria_antibiotic_susceptibility_report_marks_v(self):
         filename = "20260404_(세균) 26-01234 대덕종돈.pdf"
@@ -97,6 +98,7 @@ class TestOptifarmParseReport(unittest.TestCase):
         self.assertEqual(row["날짜"], "2026-04-04")
         self.assertEqual(row["농장명"], "대덕종돈")
         self.assertEqual(row.get("항생제_감수성"), "V")
+        self.assertEqual(row.get("PDF_파일ID"), "2026-04/20260404_(세균) 26-01234 대덕종돈.pdf")
 
     def test_long_filename_truncated(self):
         """50자 초과 파일명 → ... 로 간략화"""
@@ -104,6 +106,30 @@ class TestOptifarmParseReport(unittest.TestCase):
         row = self.parser.parse_report("", filename)
         self.assertEqual(len(row["파일명"]), 53)
         self.assertTrue(row["파일명"].endswith("..."))
+
+
+class TestOptifarmSerumAppMhJudgementFromTables(unittest.TestCase):
+    """옵티팜 혈청(APP/MH) 테이블 판독 요약"""
+
+    def setUp(self):
+        self.parser = OptifarmParser()
+
+    def test_serum_app_mh_judgement_aggregates(self):
+        # 2줄 헤더(그룹명/서브헤더) 형태를 흉내낸다.
+        tables = [
+            [
+                ["개체 구분", "APP ApxIV", "", "MH", ""],
+                ["", "S/P Value(%)", "결과 판독", "S/P ratio", "결과 판독"],
+                ["40일령-1", "-3.84", "음성", "-0.01", "음성"],
+                ["70일령-1", "3.35", "음성", "0.01", "음성"],
+                ["100일령 평균", "1.97", "0%", "0.06", "0%"],
+            ]
+        ]
+        fake_pdf = Path("/nonexistent/optifarm_serum.pdf")
+        with patch.object(self.parser, "_extract_pdf_tables", return_value=tables):
+            got = self.parser._serum_app_mh_judgements_from_pdf_tables(fake_pdf)
+        self.assertEqual(got.get("APP_항체"), "음성")
+        self.assertEqual(got.get("MH_항체"), "음성")
 
 
 class TestParseAntigenShared(unittest.TestCase):
