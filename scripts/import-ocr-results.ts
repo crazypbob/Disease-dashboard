@@ -50,6 +50,20 @@ function normalizeDate(v: string): string {
   return String(v).trim();
 }
 
+function parseDateFilterArg(args: string[], flag: '--date-from' | '--date-to'): string {
+  const raw = args.find((a) => a.startsWith(`${flag}=`));
+  const v = raw?.split('=')[1]?.trim() ?? '';
+  const d = normalizeDate(v);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+}
+
+function dateInRange(date: string, dateFrom: string, dateTo: string): boolean {
+  if (!date) return false;
+  if (dateFrom && date < dateFrom) return false;
+  if (dateTo && date > dateTo) return false;
+  return true;
+}
+
 /** 셀에 '양성판정기준' 등이 섞이면 부분 문자열 '양성'으로 + 오인 → 기준 블록 앞만 사용 */
 function stripSerumCriteriaNoiseForResult(raw: string): string {
   let s = String(raw ?? '').trim();
@@ -284,6 +298,8 @@ const DISEASE_COLUMNS: { col: string; disease: string; testType: string }[] = [
   { col: 'MH_결과', disease: 'MH', testType: 'PCR' },
   { col: 'MHR_결과', disease: 'MHR', testType: 'PCR' },
   { col: 'APP_결과', disease: 'APP', testType: 'PCR' },
+  // HPS (Haemophilus parasuis) 항원 결과서 → 일반세균(세균) 그룹으로 집계
+  { col: 'HPS_결과', disease: '세균', testType: 'HPS' },
   { col: 'PRRS_항체', disease: 'PRRS', testType: 'ELISA' },
   { col: 'PCV2_항체', disease: 'PCV2', testType: 'ELISA' },
   { col: 'APP_항체', disease: 'APP', testType: 'ELISA' },
@@ -301,6 +317,8 @@ async function main() {
   const progressEvery = parseProgressEvery(args);
   const defaultPath = path.join(process.cwd(), 'scripts', 'results.xlsx');
   const xlsxPath = fileArg?.replace('--file=', '').trim() || defaultPath;
+  const dateFrom = parseDateFilterArg(args, '--date-from');
+  const dateTo = parseDateFilterArg(args, '--date-to');
 
   if (!fs.existsSync(xlsxPath)) {
     console.error(`파일을 찾을 수 없습니다: ${xlsxPath}`);
@@ -385,6 +403,7 @@ async function main() {
 
       const parsed = parseSingleColumnRow(blob);
       if (!parsed) continue;
+      if (!dateInRange(parsed.date, dateFrom, dateTo)) continue;
 
       let farm = parsed.farm;
       if (!/^DB\d{4}$/.test(farm)) {
@@ -532,6 +551,10 @@ async function main() {
     const get = (idx: number) => (idx >= 0 ? String(cols[idx] ?? '').trim() : '');
 
     const date = normalizeDate(get(dateIdx));
+    if (!dateInRange(date, dateFrom, dateTo)) {
+      skipped++;
+      continue;
+    }
     const farmNameRaw = get(farmNameIdx);
     let farm = extractFarmCode(farmNameRaw);
     if (!farm || farm.length > 20 || !(farm in FARMS)) {

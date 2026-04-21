@@ -1,0 +1,44 @@
+version: '3.8'
+services:
+  ocr-pipeline:
+    build: .
+    container_name: ocr-pipeline
+    volumes:
+      - ./app:/app                # 파이썬 코드를 실시간으로 컨테이너에 반영 (빌드 없이 수정 사항 적용)
+      - ./input:/app/input        # PDF 파일을 여기에 넣으세요
+      - ./output:/app/output      # 결과 저장
+    environment:
+      - TZ=Asia/Seoul            # 도커 내부 시간을 한국 시간으로 맞춤
+      - LANG=ko_KR.UTF-8
+      - OCR_LANG=kor+eng
+      - OUTPUT_FORMAT=excel
+      - MODE=batch               # batch: 한번 실행 후 종료, watch: 파일 감시 상시 실행
+      - DATABASE_URL=${DATABASE_URL}  # DB(parsed_files) 중복 방지용
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    restart: "no"                # batch 모드 기본값. watch 모드 시 아래 override 사용
+
+  # watch 모드: 파일 감시 상시 실행 (docker compose --profile watch up -d)
+  ocr-watcher:
+    build: .
+    container_name: ocr-watcher
+    profiles:
+      - watch
+    volumes:
+      - ./app:/app
+      - ./input:/app/input
+      - ./output:/app/output
+    environment:
+      - TZ=Asia/Seoul
+      - LANG=ko_KR.UTF-8
+      - OCR_LANG=kor+eng
+      - OUTPUT_FORMAT=excel
+      - MODE=watch
+      - DATABASE_URL=${DATABASE_URL}
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    restart: unless-stopped

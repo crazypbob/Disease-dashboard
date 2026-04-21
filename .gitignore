@@ -22,7 +22,38 @@
 
 # misc
 .DS_Store
+scripts/.processed_pdfs.txt
 *.pem
+
+# local editor / tooling
+.vscode/
+.cursor/
+.claude/
+
+# local artifacts / logs
+*.log
+pipeline.log
+pipeline-run-*.log
+debug-*.log
+
+# OCR pipeline runtime artifacts (do not commit)
+ocr-pipeline/input/
+ocr-pipeline/output/
+ocr-pipeline/**/__pycache__/
+
+# python caches
+**/__pycache__/
+
+# notebooks
+notebooks/
+
+# local data exports (do not commit)
+scripts/results.xlsx
+*.xlsx
+*.pdf
+
+# local env variants
+env.nas
 
 # debug
 npm-debug.log*

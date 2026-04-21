@@ -1,0 +1,50 @@
+version: '3.8'
+
+# NAS/상시 호스트용: "메일 확인 → 저장 → OCR → DB"를 5분마다 수행.
+# - 실행 주체는 Docker 컨테이너(내부에서 루프)로 고정
+# - 스케줄러(cron/DSM)가 없어도 컨테이너만 켜두면 됨
+
+services:
+  nas-pipeline:
+    # nas-auto-pipeline.py가 내부에서 OCR_CMD(docker compose ...)를 호출하므로
+    # 컨테이너 안에서도 docker CLI/compose 가 필요하고, 호스트 도커 소켓을 마운트해야 한다.
+    image: docker:27-cli
+    container_name: nas-pipeline
+    # 호스트(NAS) 절대 경로를 컨테이너에도 동일하게 마운트해,
+    # 컨테이너 안에서 실행하는 `docker compose`가 "호스트에서 존재하는 경로"로 볼륨을 잡게 한다.
+    working_dir: /volume1/docker/질병메일링_대시보드/disease-dashboard
+    volumes:
+      # 호스트 Docker 데몬 제어 (컨테이너 안에서 docker compose 실행)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # NAS 레포 경로를 동일 경로로 마운트 (중요)
+      - /volume1/docker/질병메일링_대시보드/disease-dashboard:/volume1/docker/질병메일링_대시보드/disease-dashboard
+    environment:
+      - TZ=Asia/Seoul
+      # 4/9 16:00 이후부터 운영을 시작한다면 날짜 기준은 여기로 고정
+      - PIPELINE_SINCE=2026-04-09
+      # 읽음/안읽음 무관하게(ALL) 누락분까지 강제로 가져오기
+      - FORCE_ALL_MAIL=1
+      # 경로는 NAS 절대경로 기준으로 고정
+      - SAVE_PATH=/volume1/docker/질병메일링_대시보드/disease-dashboard/ocr-pipeline/input/검사결과_PDF
+      - PDF_BASE_PATH=/volume1/docker/질병메일링_대시보드/disease-dashboard/ocr-pipeline/input/검사결과_PDF
+      - OCR_INPUT_PATH=/volume1/docker/질병메일링_대시보드/disease-dashboard/ocr-pipeline/input
+      - OCR_OUTPUT_PATH=/volume1/docker/질병메일링_대시보드/disease-dashboard/ocr-pipeline/output
+      - OCR_WORK_DIR=/volume1/docker/질병메일링_대시보드/disease-dashboard/ocr-pipeline
+      - DASHBOARD_DIR=/volume1/docker/질병메일링_대시보드/disease-dashboard
+      - OCR_CMD=docker compose -f /volume1/docker/질병메일링_대시보드/disease-dashboard/ocr-pipeline/docker-compose.yml run --rm ocr-pipeline
+    command: >
+      sh -c "
+        apk add --no-cache python3 py3-pip py3-virtualenv &&
+        python3 -m venv /tmp/venv &&
+        . /tmp/venv/bin/activate &&
+        pip install --no-cache-dir -r requirements.nas.txt &&
+        while true; do
+          echo '[nas-pipeline] tick: '$(date) ;
+          echo '[nas-pipeline] since='$$PIPELINE_SINCE ;
+          # NOTE: docker compose는 파일 내 ${VAR}를 호스트에서 먼저 치환할 수 있어 $$로 이스케이프
+          /tmp/venv/bin/python scripts/nas-auto-pipeline.py --since=$$PIPELINE_SINCE ;
+          echo '[nas-pipeline] sleep 300s' ;
+          sleep 300 ;
+        done
+      "
+    restart: unless-stopped
