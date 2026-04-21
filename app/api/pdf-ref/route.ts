@@ -64,7 +64,13 @@ export async function GET(request: Request) {
       }
     }
   } else {
-    return NextResponse.json({ error: 'PDF_BASE_PATH 미설정' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'PDF_BASE_PATH 미설정',
+        hint: '배포 환경(Vercel 등)에서는 NAS 로컬 경로를 바로 읽을 수 없습니다. PDF는 나중에 객체 스토리지로 옮기거나, 우선은 매트릭스/DB 조회만 배포하세요.',
+      },
+      { status: 503 }
+    );
   }
 
   const filePath = candidates.find((p) => fs.existsSync(p) && fs.statSync(p).isFile()) ?? '';

@@ -27,6 +27,7 @@
     "verify:parsing": "tsx scripts/verify-parsing.ts",
     "verify:prrs-elisa": "tsx scripts/verify-prrs-elisa-sources.ts",
     "verify:matrix-report": "tsx scripts/verify-matrix-report.ts",
+    "deploy:smoke": "tsx scripts/smoke-deploy.ts",
     "bulk:naver-drive": "tsx scripts/bulk-naver-to-drive.ts",
     "drive:to-results": "tsx scripts/drive-parse-to-results.ts",
     "drive:download-ocr": "tsx scripts/drive-download-for-ocr.ts",
