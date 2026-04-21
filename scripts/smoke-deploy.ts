@@ -22,12 +22,14 @@ async function check(
   name: string,
   url: string,
   init?: RequestInit,
-  expect?: (res: Response) => Promise<string | void> | (string | void)
+  expect?: (res: Response) => Promise<{ ok: boolean; note?: string } | void> | ({ ok: boolean; note?: string } | void)
 ): Promise<CheckResult> {
   try {
     const res = await fetch(url, init);
-    const note = expect ? await expect(res) : undefined;
-    return { ok: res.ok, name, status: res.status, note };
+    const expected = expect ? await expect(res) : undefined;
+    const ok = expected ? expected.ok : res.ok;
+    const note = expected?.note;
+    return { ok, name, status: res.status, note };
   } catch (e) {
     return { ok: false, name, note: String(e) };
   }
@@ -63,7 +65,8 @@ async function main() {
       joinUrl(base, '/api/auth/session'),
       { headers },
       async (res) => {
-        if (res.status !== 200) return 'expected 200';
+        if (res.status !== 200) return { ok: false, note: 'expected 200' };
+        return { ok: true };
       }
     )
   );
@@ -72,18 +75,20 @@ async function main() {
   results.push(
     await check('GET /api/records', joinUrl(base, '/api/records'), { headers }, async (res) => {
       if (cookie) {
-        if (res.status !== 200) return 'expected 200 with AUTH_COOKIE';
-        return;
+        if (res.status !== 200) return { ok: false, note: 'expected 200 with AUTH_COOKIE' };
+        return { ok: true };
       }
-      if (![401, 403].includes(res.status)) return 'expected 401/403 without AUTH_COOKIE';
+      if (![401, 403].includes(res.status)) return { ok: false, note: 'expected 401/403 without AUTH_COOKIE' };
+      return { ok: true };
     })
   );
 
   // PDF endpoint should not crash; likely 401/403 (no cookie) or 503 (no PDF_BASE_PATH)
   results.push(
     await check('GET /api/pdf?id=1', joinUrl(base, '/api/pdf?id=1'), { headers }, async (res) => {
-      if (!cookie && ![401, 403].includes(res.status)) return 'expected 401/403 without AUTH_COOKIE';
-      if (cookie && ![200, 404, 503].includes(res.status)) return 'expected 200/404/503 with AUTH_COOKIE';
+      if (!cookie && ![401, 403].includes(res.status)) return { ok: false, note: 'expected 401/403 without AUTH_COOKIE' };
+      if (cookie && ![200, 404, 503].includes(res.status)) return { ok: false, note: 'expected 200/404/503 with AUTH_COOKIE' };
+      return { ok: true };
     })
   );
 
