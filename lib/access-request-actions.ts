@@ -42,7 +42,10 @@ export async function submitAccessRequestAction(
   } catch (e) {
     const code = (e as { code?: string })?.code;
     if (code === '42P01') {
-      return { error: '서버에 access_requests 테이블이 없습니다. DB 마이그레이션을 실행하세요.' };
+      return {
+        error:
+          '접수 시스템을 준비 중입니다. 잠시 후 다시 시도해 주시거나, 문제가 계속되면 관리자에게 문의해 주세요.',
+      };
     }
     console.error('[submitAccessRequestAction]', e);
     return { error: '저장에 실패했습니다.' };
