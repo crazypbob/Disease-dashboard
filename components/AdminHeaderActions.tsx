@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 type Props = {
   isAdmin: boolean;
+  /** OWNER_EMAILS 또는 ADMIN_EMAILS — 가입 승인 화면 링크 */
+  showAccessAdmin?: boolean;
 };
 
-export function AdminHeaderActions({ isAdmin }: Props) {
+export function AdminHeaderActions({ isAdmin, showAccessAdmin }: Props) {
   const [status, setStatus] = useState<{ loading?: string; ok?: string; err?: string }>({});
 
   useEffect(() => {
@@ -62,10 +65,28 @@ export function AdminHeaderActions({ isAdmin }: Props) {
     window.open('/dashboard/reading-history', 'readingHistory', 'width=1200,height=800');
   }
 
-  if (!isAdmin) return null;
+  if (!isAdmin && !showAccessAdmin) return null;
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
+      {showAccessAdmin && (
+        <>
+          <Link
+            href="/dashboard/admin/access"
+            className="rounded-md border border-zinc-400 bg-white px-2.5 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50"
+          >
+            가입 승인
+          </Link>
+          <Link
+            href="/dashboard/admin/debug-reports"
+            className="rounded-md border border-zinc-400 bg-white px-2.5 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50"
+          >
+            디버그 리포트
+          </Link>
+        </>
+      )}
+      {!isAdmin ? null : (
+        <>
       <span className="hidden text-xs font-medium text-amber-800 md:inline">관리자</span>
       <button
         type="button"
@@ -97,6 +118,8 @@ export function AdminHeaderActions({ isAdmin }: Props) {
       {status.loading && <span className="text-xs text-amber-700">{status.loading}</span>}
       {status.ok && <span className="text-xs text-green-700">{status.ok}</span>}
       {status.err && <span className="text-xs text-red-700">{status.err}</span>}
+        </>
+      )}
     </div>
   );
 }

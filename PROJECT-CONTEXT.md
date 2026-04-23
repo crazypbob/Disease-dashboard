@@ -36,7 +36,7 @@
 네이버 메일 (IMAP) → NAS 저장 → OCR 자동 → results.xlsx → DB 자동 import → 매트릭스 실시간
 ```
 
-→ 상세: `docs/PIPELINE.md`
+원본 PDF 링크는 DB `pdf_file_id`에 **NAS 경로** 또는 **Google Drive ID/URL**을 둘 수 있음(배포본은 Drive로 리다이렉트). → 상세: `docs/PIPELINE.md`
 
 ---
 
@@ -162,12 +162,14 @@ X:/
 | `DATABASE_URL` | Neon PostgreSQL |
 | `AUTH_SECRET`, `NEXTAUTH_URL` | NextAuth |
 | `ALLOWED_EMAILS`, `ADMIN_EMAILS` | 로그인·관리자 |
+| `OWNER_EMAILS`, `SIGN_IN_POLICY` | 소유자(전체 UI)·`db_allowlist` 시 DB `approved_users`와 함께 로그인 제한 — [`docs/VERCEL-ENV-VARS.md`](docs/VERCEL-ENV-VARS.md) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth |
 | `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | Gmail/Drive |
 | `INGEST_SECRET`, `CRON_SECRET` | API 인증 |
 | `OCR_INPUT_PATH` | NAS OCR input (예: X:/ocr-pipeline/input) |
 | `NAVER_EMAIL`, `NAVER_APP_PASSWORD` | naver-imap-to-nas.py |
-| `PDF_BASE_PATH`, `SAVE_PATH` | NAS 결과지 PDF 경로 (대시보드 클릭 시 /api/pdf가 여기서 파일 읽음) |
+| `PDF_BASE_PATH`, `SAVE_PATH` | NAS 결과지 PDF 경로 (`pdf_file_id`가 경로일 때 `/api/pdf` 스트림). Drive ID/URL이면 `/api/pdf`가 Drive로 리다이렉트 |
+| `ADMIN_DEBUG_EMAIL`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | 매트릭스 검증 「관리자에게 전송」 시 메일 알림(Resend) — [`docs/VERCEL-ENV-VARS.md`](docs/VERCEL-ENV-VARS.md) |
 
 ---
 

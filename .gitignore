@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 scripts/.processed_pdfs.txt
+scripts/.drive_sync_rels.tmp
+scripts/.debug-verify-gmail-dump.txt
 *.pem
 
 # local editor / tooling

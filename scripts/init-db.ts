@@ -52,6 +52,46 @@ async function init() {
   await sql`CREATE INDEX IF NOT EXISTS idx_test_records_farm ON test_records(farm_code)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_test_records_disease ON test_records(disease)`;
 
+  await sql`
+    CREATE TABLE IF NOT EXISTS access_requests (
+      id SERIAL PRIMARY KEY,
+      email VARCHAR(320) NOT NULL,
+      display_name VARCHAR(200),
+      note TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at TIMESTAMPTZ,
+      resolver_email VARCHAR(320)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_access_requests_email_lower ON access_requests(lower(email))`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS approved_users (
+      email VARCHAR(320) PRIMARY KEY,
+      dashboard_role VARCHAR(32) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      source_request_id INT REFERENCES access_requests(id) ON DELETE SET NULL
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_approved_users_role ON approved_users(dashboard_role)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS debug_reports (
+      id SERIAL PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      submitter_email VARCHAR(320) NOT NULL,
+      submitter_name VARCHAR(200),
+      title VARCHAR(500),
+      body_markdown TEXT NOT NULL,
+      context_json TEXT,
+      status VARCHAR(32) NOT NULL DEFAULT 'new',
+      mail_sent_at TIMESTAMPTZ
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_debug_reports_created ON debug_reports(created_at DESC)`;
+
   /**
    * 항체가(ELISA 등) 표본 단위 저장 — 롱 테이블(샘플 1개=1행)
    *

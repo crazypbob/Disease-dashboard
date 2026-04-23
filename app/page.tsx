@@ -58,7 +58,23 @@ export default async function HomePage({
           </p>
         </div>
       )}
-      <div className="flex flex-col items-center gap-3">
+      <div className="flex w-full max-w-sm flex-col items-stretch gap-4">
+        <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+          <p className="mb-3 text-center text-sm text-zinc-600">
+            처음이신가요? Google 계정으로 신청 후, 관리자 승인이 나면 같은 계정으로 로그인합니다.
+          </p>
+          <Link
+            href="/access-request"
+            className="block w-full rounded-md border border-zinc-800 bg-white py-2.5 text-center text-sm font-medium text-zinc-900 shadow-sm hover:bg-zinc-50"
+          >
+            회원가입 (Google 계정 · 승인 후 이용)
+          </Link>
+        </div>
+        <div className="relative text-center text-xs text-zinc-500">
+          <span className="bg-white px-2">또는</span>
+          <div className="absolute left-0 right-0 top-1/2 -z-10 h-px bg-zinc-200" aria-hidden />
+        </div>
+        <p className="text-center text-xs font-medium text-zinc-600">이미 승인된 계정</p>
         <GoogleSignInButton />
         {showLocalDev && (
           <>
@@ -73,3 +89,4 @@ export default async function HomePage({
     </div>
   );
 }
+

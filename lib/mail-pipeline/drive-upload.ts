@@ -1,6 +1,5 @@
 /**
- * Drive API — PDF 저장 (검사결과_PDF/{월}/ 폴더, 예: 3월, 4월)
- * 신규 메일 수신 시 해당 월 폴더에 직접 저장
+ * Drive API — PDF 저장 (검사결과_PDF/{YYYY-MM}/, NAS·DB import와 동일)
  */
 import { Readable } from 'stream';
 import { google } from 'googleapis';
@@ -9,18 +8,36 @@ import { MAIL_CONFIG } from './config';
 
 const folderCache = new Map<string, string>();
 
-async function getOrCreateMonthFolderId(
-  drive: ReturnType<typeof google.drive>,
-  monthFolder: string
+function escDriveQueryName(s: string): string {
+  return s.replace(/'/g, "''");
+}
+
+/** 파일명 선두 YYYYMMDD… → `YYYY-MM` (NAS 월 폴더와 동일) */
+export function inferMonthFolderYyyyMmFromFilename(filename: string): string | null {
+  const m = String(filename).match(/^(\d{4})(\d{2})\d{2}/);
+  if (!m) return null;
+  return `${m[1]}-${m[2]}`;
+}
+
+export function monthFolderYyyyMmNow(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export type UploadPdfToDriveOptions = {
+  /** 예: `2026-04`. 없으면 파일명 날짜 또는 당월 */
+  monthFolder?: string | null;
+};
+
+async function getRootFolderId(
+  drive: ReturnType<typeof google.drive>
 ): Promise<string> {
-  const key = monthFolder;
-  if (folderCache.has(key)) return folderCache.get(key)!;
+  const envId = process.env.DRIVE_ROOT_FOLDER_ID?.trim();
+  if (envId) return envId;
 
   const rootName = MAIL_CONFIG.ROOT_FOLDER_NAME;
-  const pdfName = MAIL_CONFIG.PDF_FOLDER_NAME;
-
   const listRes = await drive.files.list({
-    q: `name='${rootName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    q: `name='${escDriveQueryName(rootName)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id)',
     spaces: 'drive',
   });
@@ -36,9 +53,21 @@ async function getOrCreateMonthFolderId(
     });
     rootId = createRoot.data.id!;
   }
+  return rootId;
+}
+
+async function getOrCreateMonthFolderId(
+  drive: ReturnType<typeof google.drive>,
+  monthFolder: string
+): Promise<string> {
+  const key = monthFolder;
+  if (folderCache.has(key)) return folderCache.get(key)!;
+
+  const pdfName = MAIL_CONFIG.PDF_FOLDER_NAME;
+  const rootId = await getRootFolderId(drive);
 
   const pdfRes = await drive.files.list({
-    q: `name='${pdfName}' and '${rootId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    q: `name='${escDriveQueryName(pdfName)}' and '${rootId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id)',
     spaces: 'drive',
   });
@@ -57,7 +86,7 @@ async function getOrCreateMonthFolderId(
   }
 
   const monthRes = await drive.files.list({
-    q: `name='${monthFolder}' and '${pdfId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    q: `name='${escDriveQueryName(monthFolder)}' and '${pdfId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id)',
     spaces: 'drive',
   });
@@ -79,18 +108,20 @@ async function getOrCreateMonthFolderId(
   return monthId;
 }
 
-function getCurrentMonthFolder(): string {
-  return `${new Date().getMonth() + 1}월`;
+function resolveMonthFolder(filename: string, options?: UploadPdfToDriveOptions): string {
+  if (options?.monthFolder?.trim()) return options.monthFolder.trim();
+  return inferMonthFolderYyyyMmFromFilename(filename) ?? monthFolderYyyyMmNow();
 }
 
 export async function uploadPdfToDrive(
   buffer: Buffer,
-  filename: string
+  filename: string,
+  options?: UploadPdfToDriveOptions
 ): Promise<string> {
   const auth = getGoogleAuth();
   const drive = google.drive({ version: 'v3', auth });
 
-  const monthFolder = getCurrentMonthFolder();
+  const monthFolder = resolveMonthFolder(filename, options);
   const folderId = await getOrCreateMonthFolderId(drive, monthFolder);
 
   const file = await drive.files.create({

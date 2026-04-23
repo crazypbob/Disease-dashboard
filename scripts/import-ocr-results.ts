@@ -147,6 +147,23 @@ function extractDriveId(input: string): string | null {
   return null;
 }
 
+/** import·DB에 쓰는 NAS 상대경로 형태 */
+function isNasRelativePdfPath(s: string | null): boolean {
+  if (!s) return false;
+  return /^\d{4}-\d{2}\/.+\.pdf$/i.test(s.trim());
+}
+
+/** --replace 시 Excel의 NAS 경로가 기존 Drive ID를 덮어쓰지 않도록 병합 */
+function mergePdfFileIdOnReplace(incoming: string | null, existing: string | null): string | null {
+  const inc = incoming?.trim() ?? '';
+  const ex = (existing ?? '').trim();
+  if (!inc) return ex || null;
+  if (!ex) return inc;
+  const exDrive = extractDriveId(ex);
+  if (exDrive && isNasRelativePdfPath(inc)) return exDrive;
+  return inc;
+}
+
 /** date(YYYY-MM-DD) + filename → NAS 상대경로 (2026-03/xxx.pdf) */
 function buildNasRelativePath(date: string, filename: string): string | null {
   if (!date || !filename?.trim() || !/\.pdf$/i.test(filename)) return null;
@@ -430,7 +447,11 @@ async function main() {
         if (existingByPdf.length > 0) {
           if (replace) {
             try {
-              await sql`UPDATE test_records SET result = ${result}, pdf_file_id = COALESCE(${parsed.fileId}, pdf_file_id) WHERE id = ${(existingByPdf[0] as ExistingRecord).id}`;
+              const mergedPdf = mergePdfFileIdOnReplace(
+                parsed.fileId,
+                (existingByPdf[0] as ExistingRecord).pdf_file_id
+              );
+              await sql`UPDATE test_records SET result = ${result}, pdf_file_id = ${mergedPdf} WHERE id = ${(existingByPdf[0] as ExistingRecord).id}`;
               updated++;
             } catch (e) {
               console.warn(`행 ${i + 1} ${disease} 업데이트 오류:`, (e as Error).message);
@@ -448,7 +469,11 @@ async function main() {
         if (existing.length > 0) {
           if (replace) {
             try {
-              await sql`UPDATE test_records SET result = ${result}, pdf_file_id = COALESCE(${parsed.fileId}, pdf_file_id) WHERE id = ${(existing[0] as { id: number }).id}`;
+              const mergedPdf = mergePdfFileIdOnReplace(
+                parsed.fileId,
+                (existing[0] as { pdf_file_id: string | null }).pdf_file_id
+              );
+              await sql`UPDATE test_records SET result = ${result}, pdf_file_id = ${mergedPdf} WHERE id = ${(existing[0] as { id: number }).id}`;
               updated++;
             } catch (e) {
               console.warn(`행 ${i + 1} ${disease} 업데이트 오류:`, (e as Error).message);
@@ -629,7 +654,11 @@ async function main() {
       if (existingByPdf.length > 0) {
         if (replace) {
           try {
-            await sql`UPDATE test_records SET result = ${result}, pdf_file_id = COALESCE(${fileId}, pdf_file_id), details = COALESCE(${details}, details) WHERE id = ${(existingByPdf[0] as ExistingRecord).id}`;
+            const mergedPdf = mergePdfFileIdOnReplace(
+              fileId,
+              (existingByPdf[0] as ExistingRecord).pdf_file_id
+            );
+            await sql`UPDATE test_records SET result = ${result}, pdf_file_id = ${mergedPdf}, details = COALESCE(${details}, details) WHERE id = ${(existingByPdf[0] as ExistingRecord).id}`;
             updated++;
           } catch (e) {
             console.warn(`행 ${i + 1} ${disease} 업데이트 오류:`, (e as Error).message);
@@ -647,7 +676,11 @@ async function main() {
       if (existing.length > 0) {
         if (replace) {
           try {
-            await sql`UPDATE test_records SET result = ${result}, pdf_file_id = COALESCE(${fileId}, pdf_file_id), details = COALESCE(${details}, details) WHERE id = ${(existing[0] as { id: number }).id}`;
+            const mergedPdf = mergePdfFileIdOnReplace(
+              fileId,
+              (existing[0] as { pdf_file_id: string | null }).pdf_file_id
+            );
+            await sql`UPDATE test_records SET result = ${result}, pdf_file_id = ${mergedPdf}, details = COALESCE(${details}, details) WHERE id = ${(existing[0] as { id: number }).id}`;
             updated++;
           } catch (e) {
             console.warn(`행 ${i + 1} ${disease} 업데이트 오류:`, (e as Error).message);

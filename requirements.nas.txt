@@ -1,0 +1,6 @@
+# NAS(Alpine)에서 실행되는 파이프라인용 의존성
+# - playwright는 Alpine(musl)에서 pip wheel이 없어 설치 실패하는 경우가 많아 제외
+# - vetdxlab 다운로드는 requests/urllib 기반으로 먼저 시도하며, playwright는 선택적 폴백이다
+python-dotenv>=1.0.0
+requests>=2.28.0
+

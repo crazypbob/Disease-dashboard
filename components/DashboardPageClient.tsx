@@ -10,9 +10,11 @@ import { useRouter } from 'next/navigation';
 type Props = {
   farm: string | null;
   isAdmin: boolean;
+  /** 다비 전용 내부 계정: URL로 다른 주최를 바꿔도 서버가 막지만, 클라이언트 탭도 숨김 */
+  restrictAudienceSwitcher?: boolean;
 };
 
-export function DashboardPageClient({ farm, isAdmin }: Props) {
+export function DashboardPageClient({ farm, isAdmin, restrictAudienceSwitcher }: Props) {
   const [viewMode, setViewMode] = useState<'matrix' | 'summary' | 'map' | 'titer'>('matrix');
   const [showMatrixFarmSidebar, setShowMatrixFarmSidebar] = useState(true);
   const sp = useSearchParams();
@@ -72,6 +74,7 @@ export function DashboardPageClient({ farm, isAdmin }: Props) {
         <DashboardContent
           farm={farm}
           isAdmin={isAdmin}
+          restrictAudienceSwitcher={!!restrictAudienceSwitcher}
           viewMode={viewMode}
           onViewModeChange={(m) => {
             setViewMode(m);

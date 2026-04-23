@@ -11,6 +11,7 @@ import {
   type PublicVetDemoRegion,
 } from '@/lib/matrix-region-filters';
 import { canUseMatrixScope } from '@/lib/matrix-viewer-auth';
+import { effectiveMatrixScopeForRestrictedUser } from '@/lib/api-matrix-scope-session';
 import { buildSidoMonthDiseaseAggregates, monthDiseaseKey } from '@/lib/gov-central-aggregate';
 import { parseSidoLabelFromAddress } from '@/lib/farm-sido';
 import { DEFAULT_VET_ASSIGNED_NAME } from '@/lib/viewer-constants';
@@ -33,6 +34,7 @@ function parseMatrixScope(raw: string | null): MatrixScope | null {
   const s = raw.trim() as MatrixScope;
   const allowed: MatrixScope[] = [
     'default',
+    'dabi',
     'gov_central',
     'gov_local',
     'public_vet',
@@ -62,7 +64,10 @@ export async function GET(request: Request) {
   const customerOnly = searchParams.get('customerOnly') === '1' || searchParams.get('customerOnly') === 'true';
   const limit = Math.min(parseInt(searchParams.get('limit') ?? '3000', 10), 8000);
 
-  const matrixScope = parseMatrixScope(searchParams.get('matrixScope'));
+  const matrixScope = effectiveMatrixScopeForRestrictedUser(
+    session,
+    parseMatrixScope(searchParams.get('matrixScope'))
+  );
   const publicVetRegion = (searchParams.get('publicVetRegion')?.trim() ?? null) as PublicVetDemoRegion | null;
   const localSido = searchParams.get('localSido')?.trim() ?? null;
   const vetAssignedName = searchParams.get('vetAssignedName')?.trim() || DEFAULT_VET_ASSIGNED_NAME;

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { farmDisplayLabel } from '@/lib/farm-display';
 import { useFarmAnonymize } from '@/hooks/useFarmAnonymize';
@@ -26,6 +27,7 @@ import {
 import { DISEASE_FILTER_OPTIONS, DEFAULT_DISEASES } from '@/lib/disease-filter';
 import { SidoAggregateMatrix } from '@/components/SidoAggregateMatrix';
 import type { MatrixScope, PublicVetDemoRegion } from '@/lib/matrix-region-filters';
+import { submitDebugReportAction } from '@/lib/debug-report-actions';
 
 function ymd(d: Date): string {
   const y = d.getFullYear();
@@ -149,6 +151,7 @@ export function RecordsMatrix({
   customerOnly = false,
   matrixViewer = null,
 }: RecordsMatrixProps) {
+  const { data: session } = useSession();
   const sp = useSearchParams();
   const router = useRouter();
   const resetKey = (sp?.get('reset') ?? '').trim();
@@ -173,6 +176,9 @@ export function RecordsMatrix({
   const pathname = usePathname() ?? '/dashboard';
   const verifyMode = (sp?.get('verify') ?? '').trim() === '1';
   const [verifyPicks, setVerifyPicks] = useState<Record<string, MatrixVerifyPick>>({});
+  const [verifySendBusy, setVerifySendBusy] = useState(false);
+  const [verifySendMsg, setVerifySendMsg] = useState<string | null>(null);
+  const [verifySendErr, setVerifySendErr] = useState<string | null>(null);
 
   const [customFrom, setCustomFrom] = useState(() => {
     const to = new Date();
@@ -928,14 +934,70 @@ export function RecordsMatrix({
                   <span className="text-[11px] text-zinc-600">{Object.keys(verifyPicks).length}개 선택</span>
                   <button
                     type="button"
-                    disabled={Object.keys(verifyPicks).length === 0 || !verifyExportMarkdown}
-                    onClick={() => {
-                      if (verifyExportMarkdown) void navigator.clipboard.writeText(verifyExportMarkdown);
+                    disabled={
+                      Object.keys(verifyPicks).length === 0 ||
+                      !verifyExportMarkdown ||
+                      verifySendBusy ||
+                      !session?.user?.email
+                    }
+                    onClick={async () => {
+                      if (!verifyExportMarkdown || !session?.user?.email) return;
+                      setVerifySendBusy(true);
+                      setVerifySendErr(null);
+                      setVerifySendMsg(null);
+                      try {
+                        const q = sp?.toString() ?? '';
+                        const r = await submitDebugReportAction({
+                          bodyMarkdown: verifyExportMarkdown,
+                          title: `매트릭스 검증 ${Object.keys(verifyPicks).length}건`,
+                          context: {
+                            pathname,
+                            query: q,
+                            matrixScope: matrixViewer?.matrixScope ?? null,
+                            farm: farmParam,
+                            submitterEmail: session.user.email,
+                            submitterName: session.user.name ?? null,
+                          },
+                        });
+                        if (r.error) {
+                          setVerifySendErr(r.error);
+                        } else {
+                          setVerifySendMsg(
+                            `저장됨 #${r.id ?? ''}${r.mailSent ? ' · 관리자 메일 발송' : ''}${
+                              r.mailNote ? ` · ${r.mailNote}` : ''
+                            }`
+                          );
+                        }
+                      } catch (e) {
+                        setVerifySendErr((e as Error).message);
+                      } finally {
+                        setVerifySendBusy(false);
+                      }
                     }}
-                    className="rounded bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    마크다운 복사
+                    {verifySendBusy ? '전송 중…' : '관리자에게 전송'}
                   </button>
+                  <details className="rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600">
+                    <summary className="cursor-pointer select-none font-medium text-zinc-700 hover:text-zinc-900">
+                      고급: 마크다운 복사
+                    </summary>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={Object.keys(verifyPicks).length === 0 || !verifyExportMarkdown}
+                        onClick={() => {
+                          if (verifyExportMarkdown) void navigator.clipboard.writeText(verifyExportMarkdown);
+                        }}
+                        className="rounded bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        클립보드에 복사
+                      </button>
+                      <span className="self-center text-[10px] text-zinc-500">
+                        Cursor 등에 붙여넣을 때만 사용. 기본은 위 「관리자에게 전송」입니다.
+                      </span>
+                    </div>
+                  </details>
                   <button
                     type="button"
                     disabled={Object.keys(verifyPicks).length === 0}
@@ -944,6 +1006,11 @@ export function RecordsMatrix({
                   >
                     선택 비우기
                   </button>
+                  {(verifySendMsg || verifySendErr) && (
+                    <span className={`text-[11px] ${verifySendErr ? 'text-red-700' : 'text-emerald-800'}`}>
+                      {verifySendErr ?? verifySendMsg}
+                    </span>
+                  )}
                 </>
               )}
             </div>
@@ -994,7 +1061,7 @@ export function RecordsMatrix({
             <span className="font-semibold text-emerald-600">-</span> (밑줄=원본 PDF)
             {verifyMode && (
               <span className="ml-2 text-amber-900">
-                · 검증 모드: 파싱·DB 이상이 의심되는 칸을 체크한 뒤 「마크다운 복사」로 목록을 Cursor 등에 붙여넣을 수 있습니다.
+                · 검증 모드: 의심 칸을 체크한 뒤 「관리자에게 전송」으로 접수(DB·이메일, 설정 시). 필요 시 고급 메뉴에서 마크다운 복사.
               </span>
             )}
           </p>

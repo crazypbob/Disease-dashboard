@@ -22,7 +22,8 @@ NAS 작업 스케줄러에서 5~10분마다 실행.
   3. 메일저장에서 PDF 검색, 아직 처리 안 한 것만 OCR input으로 복사 (기본 3/23 이후, --all-dates 시 전체)
   4. OCR 실행 (OCR_CMD)
   5. results.xlsx → DB import (npx tsx import-ocr-results.ts)
-  6. import 성공 시 OCR input 비우기 (다음 run에 신규만 파싱)
+  6. import 성공 시 Google Drive 동기화 (sync-pdfs-to-drive.ts, SKIP_DRIVE_SYNC=1 이면 생략)
+  7. OCR input 비우기 (다음 run에 신규만 파싱)
 """
 import os
 import re
@@ -180,6 +181,82 @@ def parse_date_from_filename(name: str) -> int | None:
     if m:
         return int(m.group(1))
     return None
+
+
+def _find_nas_rel_for_basename(save_path: str, basename: str) -> str | None:
+    if not save_path or not basename or not os.path.isdir(save_path):
+        return None
+    for root, _dirs, files in os.walk(save_path):
+        if basename in files:
+            return os.path.relpath(os.path.join(root, basename), save_path).replace("\\", "/")
+    return None
+
+
+def nas_pdf_rels_for_drive_sync(save_path: str, ocr_input_path: str) -> list[str]:
+    if not os.path.isdir(ocr_input_path) or not os.path.isdir(save_path):
+        return []
+    out: list[str] = []
+    for fname in os.listdir(ocr_input_path):
+        if not fname.lower().endswith(".pdf"):
+            continue
+        rel = _find_nas_rel_for_basename(save_path, fname)
+        if rel and rel not in out:
+            out.append(rel)
+    return out
+
+
+def run_drive_pdf_sync(*, save_path: str, ocr_input_path: str, cwd_dashboard: str, dry_run: bool) -> None:
+    """import 성공 직후: NAS PDF → Drive 업로드 + DB pdf_file_id 갱신."""
+    if dry_run:
+        print("\n[4b/5] Google Drive PDF 동기화 (--dry-run: 생략)")
+        return
+    if os.environ.get("SKIP_DRIVE_SYNC", "").strip() == "1":
+        print("\n[4b/5] Google Drive PDF 동기화 스킵 (SKIP_DRIVE_SYNC=1)")
+        return
+    rels = nas_pdf_rels_for_drive_sync(save_path, ocr_input_path)
+    if not rels:
+        return
+    print(f"\n[4b/5] Google Drive PDF 동기화 ({len(rels)}개)")
+    rels_file = str(SCRIPT_DIR / ".drive_sync_rels.tmp")
+    try:
+        with open(rels_file, "w", encoding="utf-8") as f:
+            for r in rels:
+                f.write(r.replace("\\", "/") + "\n")
+        cwd = cwd_dashboard
+        if os.name == "nt":
+            sync_cmd = (
+                f'npx tsx scripts/sync-pdfs-to-drive.ts '
+                f'--base="{save_path}" --rels-file="{rels_file}"'
+            )
+            subprocess.run(sync_cmd, shell=True, check=True, cwd=cwd)
+        else:
+            dash_abs = os.path.abspath(cwd)
+            save_abs = os.path.abspath(save_path)
+            rels_rf = os.path.relpath(rels_file, dash_abs).replace("\\", "/")
+            sep = os.sep
+            if save_abs.startswith(dash_abs + sep) or os.path.normcase(save_abs) == os.path.normcase(dash_abs):
+                rel_from_dash = os.path.relpath(save_abs, dash_abs).replace("\\", "/")
+                base_docker = f"/app/{rel_from_dash}"
+                extra_vol = ""
+            else:
+                base_docker = "/nas_pdf"
+                extra_vol = f' -v "{save_abs}":/nas_pdf:ro'
+            inner = (
+                f"npx tsx scripts/sync-pdfs-to-drive.ts "
+                f"--base={base_docker} --rels-file=/app/{rels_rf}"
+            )
+            sync_cmd = (
+                f'docker run --rm --env-file env.nas -v "{dash_abs}":/app -w /app{extra_vol} '
+                f'node:20 sh -c "npm install --no-save @esbuild/linux-x64 && {inner}"'
+            )
+            subprocess.run(sync_cmd, shell=True, check=True, cwd=cwd)
+        print("  Drive 동기화 완료")
+    finally:
+        try:
+            if os.path.exists(rels_file):
+                os.remove(rels_file)
+        except OSError:
+            pass
 
 
 def _parse_ymd(s: str) -> date:
@@ -542,6 +619,12 @@ def main():
             try:
                 subprocess.run(import_cmd, shell=True, check=True, cwd=cwd)
                 print("  import 완료")
+                run_drive_pdf_sync(
+                    save_path=SAVE_PATH,
+                    ocr_input_path=OCR_INPUT_PATH,
+                    cwd_dashboard=cwd,
+                    dry_run=False,
+                )
                 # OCR input 비우기 (이번에 복사한 신규분만 삭제)
                 if not skip_ocr and os.path.isdir(OCR_INPUT_PATH):
                     removed = 0

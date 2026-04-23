@@ -1,6 +1,8 @@
 import type { NextAuthOptions } from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
+import { getSignInPolicy, isOwnerEmail } from '@/lib/dashboard-role';
+import { selectApprovedDashboardRole } from '@/lib/user-access-db';
 
 const allowedEmails = (process.env.ALLOWED_EMAILS ?? '')
   .split(',')
@@ -50,7 +52,7 @@ export const authOptions = {
     ...(devLocalProvider ? [devLocalProvider] : []),
   ],
   callbacks: {
-    signIn({ user, account }) {
+    async signIn({ user, account }) {
       // Credentials: NextAuth는 account.provider에 프로바이더 id(dev-local)를 넣음 (문자열 'credentials' 아님)
       if (
         account?.provider === 'dev-local' &&
@@ -60,8 +62,49 @@ export const authOptions = {
       }
       if (!user?.email) return false;
       const email = user.email.toLowerCase();
+
+      if (getSignInPolicy() === 'db_allowlist') {
+        if (isOwnerEmail(email)) return true;
+        if (allowedEmails.includes(email)) return true;
+        try {
+          const approved = await selectApprovedDashboardRole(email);
+          return approved !== null;
+        } catch (e) {
+          console.error('[auth signIn] approved_users 조회 실패:', e);
+          return false;
+        }
+      }
+
+      // open (기본): 화이트리스트가 비어 있으면 전원 허용
       if (allowedEmails.length === 0) return true;
       return allowedEmails.includes(email);
+    },
+    async jwt({ token, user }) {
+      if (user?.email) {
+        const e = user.email.toLowerCase();
+        if (e === DEV_LOCAL_AUTH_EMAIL) {
+          token.role = 'owner';
+        } else if (getSignInPolicy() === 'open') {
+          token.role = 'owner';
+        } else if (isOwnerEmail(e) || allowedEmails.includes(e)) {
+          token.role = 'owner';
+        } else {
+          try {
+            const fromDb = await selectApprovedDashboardRole(e);
+            token.role = fromDb ?? 'internal_dabi';
+          } catch (err) {
+            console.error('[auth jwt] role 조회 실패:', err);
+            token.role = 'internal_dabi';
+          }
+        }
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.role = token.role === 'internal_dabi' ? 'internal_dabi' : 'owner';
+      }
+      return session;
     },
   },
   logger: {

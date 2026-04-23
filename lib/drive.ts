@@ -57,8 +57,8 @@ export function driveFileUrl(pdfFileId: string | null | undefined): string | nul
 
 /**
  * 원본 열기 URL
- * - NAS 상대·절대 경로 → 인증된 `/api/pdf?id=` 스트림
- * - Drive는 더 이상 사용하지 않음 (구형 값은 링크 미표시)
+ * - NAS 상대·절대 경로 → 인증된 `/api/pdf?id=` 스트림 (서버가 PDF_BASE_PATH에서 읽음)
+ * - Google Drive 파일 ID·공유 URL → Vercel 등에서도 열 수 있도록 Drive 뷰 링크 (NAS와 하이브리드)
  */
 export function pdfViewUrl(recordId: number, pdfFileId: string | null | undefined): string | null {
   if (!pdfFileId?.trim()) return null;
@@ -72,5 +72,7 @@ export function pdfViewUrl(recordId: number, pdfFileId: string | null | undefine
   if (looksLikePath) {
     return `/api/pdf?id=${recordId}`;
   }
+  const drive = driveFileUrl(ref);
+  if (drive) return drive;
   return null;
 }

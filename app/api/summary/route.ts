@@ -8,6 +8,7 @@ import {
   type PublicVetDemoRegion,
 } from '@/lib/matrix-region-filters';
 import { canUseMatrixScope } from '@/lib/matrix-viewer-auth';
+import { isInternalDabiOnly } from '@/lib/dashboard-role';
 import { loadFarmCodeLocationMap } from '@/lib/load-farm-locations';
 import { DEFAULT_VET_ASSIGNED_NAME } from '@/lib/viewer-constants';
 
@@ -49,7 +50,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
   const months = parseMonths(searchParams.get('months'));
-  const matrixScope = parseMatrixScope(searchParams.get('matrixScope')) ?? 'default';
+  const matrixScope = isInternalDabiOnly(session)
+    ? 'dabi'
+    : (parseMatrixScope(searchParams.get('matrixScope')) ?? 'default');
 
   const publicVetRegion = (searchParams.get('publicVetRegion')?.trim() ?? null) as PublicVetDemoRegion | null;
   const localSido = searchParams.get('localSido')?.trim() ?? null;

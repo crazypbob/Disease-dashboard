@@ -95,3 +95,9 @@
 ---
 
 *최초 정리: 2026-04-10 — `웹호스팅·도커 검토` 계획 반영.*
+
+---
+
+## 5. 레포·호스팅 비공개
+
+- [`SECURITY-REPO-ACCESS.md`](SECURITY-REPO-ACCESS.md) — Git Private, Vercel 접근, 시크릿 관리 체크리스트.

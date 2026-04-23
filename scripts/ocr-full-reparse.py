@@ -13,8 +13,11 @@ input/검사결과_PDF 내 모든 PDF를 OCR로 새로 파싱하고, DB에 반�
   # DASHBOARD_DIR: 프로젝트 경로
 
   python scripts/ocr-full-reparse.py              # OCR 전체 실행 → import
-  python scripts/ocr-full-reparse.py --replace    # 기존 DB 레코드도 새 결과로 업데이트
-  python scripts/ocr-full-reparse.py --dry-run    # 시뮬레이션만
+  python3 scripts/ocr-full-reparse.py --replace    # 기존 DB 레코드도 새 결과로 업데이트
+  python3 scripts/ocr-full-reparse.py --dry-run    # 시뮬레이션만
+
+  NAS: OCR_CMD 등은 `set -a; . ./env.nas; set +a` 후 실행. Linux에서는 import 단계가
+  Docker(node:20)로 실행된다(호스트에 npx 불필요).
 """
 import os
 import sys
@@ -122,11 +125,23 @@ def main():
         cwd = dash
         if os.name == "nt" and (dash.startswith("\\\\") or dash.startswith("//")):
             cwd = os.getcwd()
-        import_cmd = f'npx tsx scripts/import-ocr-results.ts --file={xlsx_path}'
-        if replace:
-            import_cmd += " --replace"
+        if os.name == "nt":
+            import_cmd = f'npx tsx scripts/import-ocr-results.ts --file={xlsx_path}'
+            if replace:
+                import_cmd += " --replace"
+        else:
+            # NAS 등: 호스트에 Node/npx 없음 → nas-auto-pipeline.py와 동일하게 Docker로 import
+            rel_xlsx = os.path.relpath(xlsx_path, cwd).replace("\\", "/")
+            cmd_tail = f'npx tsx scripts/import-ocr-results.ts --file=/app/{rel_xlsx}'
+            if replace:
+                cmd_tail += " --replace"
+            cwd_abs = os.path.abspath(cwd)
+            import_cmd = (
+                f'docker run --rm --env-file env.nas -v "{cwd_abs}":/app -w /app node:20 '
+                f'sh -c "npm install --no-save @esbuild/linux-x64 && {cmd_tail}"'
+            )
         if dry_run:
-            print(f"\n  [실행예정] {import_cmd}")
+            print(f"\n  [실행예정] cd {cwd} && {import_cmd}")
         else:
             import subprocess
             try:

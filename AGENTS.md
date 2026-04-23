@@ -38,6 +38,15 @@
 
 ---
 
+## 매트릭스 검증 오류 메일·Gmail 덤프
+
+- 웹에서는 `/dashboard/admin/debug-reports`에서 DB 접수분을 확인합니다.
+- `ADMIN_DEBUG_EMAIL` 수신함(Gmail)에서 제목 `DiseaseDashboard:Verify` 또는 예전 `[디버그]`·`매트릭스 검증`으로 검색할 수 있습니다.
+- 로컬(`.env.local`에 Gmail OAuth)에서 **`npm run dump:debug-gmail`** → `scripts/.debug-verify-gmail-dump.txt`에 본문을 모읍니다. 출력 경로는 `--out=`으로 변경 가능. 이 파일을 열고 파서·`docs/TITER-PDF-OCR-RULES.md`·`ocr-pipeline/app/parser.py` 수정안을 논의하면 됩니다.
+- Drive·재파싱·sync 절차: **`docs/RUNBOOK-DRIVE-REPARSING.md`**
+
+---
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

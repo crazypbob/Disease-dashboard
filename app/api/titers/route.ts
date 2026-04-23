@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { canUseMatrixScope } from '@/lib/matrix-viewer-auth';
 import { resolveMatrixScopeFarmCodes, type MatrixScope } from '@/lib/matrix-region-filters';
+import { isInternalDabiOnly } from '@/lib/dashboard-role';
 
 export type TiterRecord = {
   id: number;
@@ -41,7 +42,15 @@ type InsertPayload = {
 function parseMatrixScope(raw: string | null): MatrixScope | null {
   if (!raw) return null;
   const s = raw.trim() as MatrixScope;
-  const allowed: MatrixScope[] = ['default', 'gov_central', 'gov_local', 'public_vet', 'vet_assigned', 'vet_union'];
+  const allowed: MatrixScope[] = [
+    'default',
+    'dabi',
+    'gov_central',
+    'gov_local',
+    'public_vet',
+    'vet_assigned',
+    'vet_union',
+  ];
   return allowed.includes(s) ? s : null;
 }
 
@@ -63,9 +72,16 @@ export async function GET(req: Request) {
   const disease = searchParams.get('disease') ?? null;
   const from    = searchParams.get('from') ?? null;
   const to      = searchParams.get('to') ?? null;
-  const matrixScope = parseMatrixScope(searchParams.get('matrixScope'));
+  let matrixScope = parseMatrixScope(searchParams.get('matrixScope'));
   const localSido = searchParams.get('localSido');
   const publicVetRegion = searchParams.get('publicVetRegion');
+
+  if (isInternalDabiOnly(session)) {
+    if (matrixScope !== null && matrixScope !== 'default' && matrixScope !== 'dabi') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    matrixScope = matrixScope === 'default' ? 'dabi' : matrixScope;
+  }
 
   const ids = farmCode ? [farmCode, ...(farmCodes ?? [])] : (farmCodes ?? []);
   if (ids.length === 0) return NextResponse.json({ records: [] });
@@ -84,11 +100,13 @@ export async function GET(req: Request) {
       { localSido, publicVetRegion: publicVetRegion as unknown as 'gyeonggi' | 'chungcheong' | null },
       new Map()
     );
-    if (!allowed || allowed.size === 0) {
+    if (allowed !== null && allowed.size === 0) {
       return NextResponse.json({ records: [] });
     }
-    const ok = limitedIds.every((id) => allowed.has(id) || allowed.has(`DB${id}`));
-    if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (allowed !== null && allowed.size > 0) {
+      const ok = limitedIds.every((id) => allowed.has(id) || allowed.has(`DB${id}`));
+      if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
   }
 
   let rows: unknown;

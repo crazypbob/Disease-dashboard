@@ -32,6 +32,7 @@
 | 파일 | 내용 |
 |------|------|
 | `DEPLOYMENT-HOSTING.md` | **웹 호스팅 vs 운영 아키텍처**(채택안·대안·배포 체크리스트) |
+| `SECURITY-REPO-ACCESS.md` | Git Private·Vercel 접근·시크릿 비공개 체크리스트 |
 | `PIPELINE.md` | NAS 파이프라인 흐름, 폴더 구조 |
 | `SETUP-NAVER-OCR.md` | 네이버 IMAP, OCR Docker, 자동 감시 |
 | `OCR-NAS-운영-정리.md` | OCR·전북대 표 파싱·watcher·DB·나스 단독 운영 요약 (2026-03-26) |

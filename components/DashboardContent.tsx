@@ -22,6 +22,8 @@ type ViewMode = 'matrix' | 'summary' | 'map' | 'titer';
 type Props = {
   farm: string | null;
   isAdmin?: boolean;
+  /** 다비 전용 계정: URL 동기화 시 항상 다비 주최로 고정 */
+  restrictAudienceSwitcher?: boolean;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   onMatrixFarmSidebarVisibilityChange?: (visible: boolean) => void;
@@ -40,6 +42,7 @@ const MATRIX_AUDIENCE_OPTIONS: { value: MatrixScope; label: string }[] = [
 export function DashboardContent({
   farm,
   isAdmin,
+  restrictAudienceSwitcher = false,
   viewMode,
   onViewModeChange,
   onMatrixFarmSidebarVisibilityChange,
@@ -64,8 +67,11 @@ export function DashboardContent({
     const aud = (searchParams?.get('aud') ?? '').trim() as MatrixScope;
     const view = (searchParams?.get('view') ?? '').trim() as ViewMode;
     const pv = (searchParams?.get('pv') ?? '').trim() as PublicVetDemoRegion;
-    const nextAud: MatrixScope =
-      MATRIX_AUDIENCE_OPTIONS.some((o) => o.value === aud) ? aud : 'default';
+    const nextAud: MatrixScope = restrictAudienceSwitcher
+      ? 'dabi'
+      : MATRIX_AUDIENCE_OPTIONS.some((o) => o.value === aud)
+        ? aud
+        : 'default';
     const nextView: ViewMode =
       view === 'map' || view === 'titer' || view === 'matrix' || view === 'summary' ? view : 'matrix';
 
@@ -79,7 +85,7 @@ export function DashboardContent({
       onViewModeChange(nextView);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, restrictAudienceSwitcher]);
 
   function pushDashboardState(next: { aud?: MatrixScope; view?: ViewMode }) {
     const sp = new URLSearchParams(searchParams?.toString() ?? '');

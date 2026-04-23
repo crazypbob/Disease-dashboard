@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { sql } from '@/lib/db';
+import { driveFileUrl, isLikelyGoogleDriveRef } from '@/lib/drive';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -49,9 +50,13 @@ export async function GET(request: Request) {
 
   const ref = rows[0].pdf_file_id.trim();
 
-  // Drive ID (legacy) → 더 이상 지원 안 함
-  if (/^[a-zA-Z0-9_-]{10,}$/.test(ref) && !ref.includes('/') && !ref.includes('\\')) {
-    return NextResponse.json({ error: 'PDF 미연결 (Drive 미사용)' }, { status: 404 });
+  // Google Drive ID·URL → 브라우저에서 바로 열도록 리다이렉트 (Vercel은 NAS 파일을 읽을 수 없음)
+  if (isLikelyGoogleDriveRef(ref)) {
+    const url = driveFileUrl(ref);
+    if (url) {
+      return NextResponse.redirect(url, 302);
+    }
+    return NextResponse.json({ error: 'Invalid Drive ref' }, { status: 400 });
   }
 
   let filePath: string;

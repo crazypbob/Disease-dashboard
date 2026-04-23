@@ -1,6 +1,7 @@
 # 파이프라인 가이드
 
-> **구글 Drive 미사용.** NAS(X: 드라이브) 전용.
+> **저장·OCR 진실 공급원: NAS(X: 드라이브).**  
+> **Google Drive(선택):** `test_records.pdf_file_id`에 Drive 파일 ID·공유 URL이 들어 있으면, 매트릭스 원본 링크와 `/api/pdf`는 **브라우저에서 Drive로 리다이렉트**합니다. Vercel 등 서버리스에서는 NAS 경로 스트리밍 대신 이 방식이 필요합니다.
 
 ---
 
@@ -14,7 +15,7 @@ ocr-pipeline/input/검사결과_PDF/{YYYY-MM}/*.pdf
 ocr-pipeline/output/results.xlsx
     ↓ import-ocr-results.ts
 Neon DB → 대시보드 매트릭스
-    ↓ /api/pdf (인증 사용자만 PDF 보기)
+    ↓ 원본: NAS 경로 → /api/pdf 스트림 · Drive ID/URL → Drive 뷰로 이동
 ```
 
 | 단계 | 명령 | 비고 |
@@ -22,7 +23,12 @@ Neon DB → 대시보드 매트릭스
 | 누락 다운로드 | `npm run naver:compare-download` | 네이버 vs NAS 비교, 누락분만 |
 | 자동 파이프라인 | `npm run naver:pipeline` | 메일→OCR→DB 1회 실행 |
 | OCR 결과 → DB | `npm run import:ocr` | results.xlsx 경로 지정 가능 |
+| NAS PDF → Drive + DB | `npm run sync:drive -- --base="<SAVE_PATH>"` | `YYYY-MM/파일.pdf` 업로드 후 `pdf_file_id`를 Drive ID로 갱신 — 단계별 절차는 [RUNBOOK-DRIVE-REPARSING.md](RUNBOOK-DRIVE-REPARSING.md) |
 | 3/23 이전 포함 | `npm run ocr:pdf-db-pipeline -- --all-dates` | 날짜 컷오프 무시 |
+
+**1회(전체 재파싱 → Drive 이전):** NAS에서 `python scripts/ocr-full-reparse.py --replace`로 OCR·DB 반영 후, 같은 호스트에서 `npm run sync:drive -- --base="<SAVE_PATH>"` 실행. 대량 업로드 시 API 한도를 피하려면 `--sleep-ms=200` 옵션을 붙일 수 있다. 미리보기는 `--dry-run`, 특정 월 이후만 `--since=2026-04`.
+
+**상시(자동 업로드):** `scripts/nas-auto-pipeline.py`는 DB import에 성공하면 곧바로 `sync-pdfs-to-drive.ts`를 호출한다 (이번 OCR input에 있던 PDF에 대해 SAVE_PATH 기준 상대경로로 동기화). 끄려면 `SKIP_DRIVE_SYNC=1`. Drive 루트를 이름 검색 대신 고정 ID로 쓰려면 `DRIVE_ROOT_FOLDER_ID`(질병메일링_대시보드에 해당하는 폴더)를 `.env.local` / `env.nas`에 둔다.
 
 → 전체 명령: **`COMMANDS.md`**  
 → 네이버·OCR 설정: **`SETUP-NAVER-OCR.md`**

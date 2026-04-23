@@ -39,6 +39,17 @@ npm run import:ocr -- --file="X:/ocr-pipeline/output/results.xlsx" --dry-run
 npm run import:ocr -- --file="X:/ocr-pipeline/output/result.xlsx" --format=single-column --replace
 ```
 
+### import 후 NAS PDF → Google Drive(선택·백필)
+
+`--replace` import 직후에도, DB에 이미 들어 있는 **Drive 파일 ID**는 같은 스크립트에서 NAS 상대경로로 덮어쓰지 않도록 보존한다. NAS 원본을 Drive에 올리고 `pdf_file_id`를 Drive ID로 바꾸려면:
+
+```bash
+npm run sync:drive -- --base="X:/질병메일링_대시보드/검사결과_PDF" --dry-run
+npm run sync:drive -- --base="X:/질병메일링_대시보드/검사결과_PDF"
+```
+
+자동 파이프라인(`nas-auto-pipeline.py`)은 import 성공 시 동일 스크립트를 호출한다. 상세는 **`docs/PIPELINE.md`**.
+
 ---
 
 ## 2) 관리자 API(`/api/admin/import-ocr`) 사용 시 주의

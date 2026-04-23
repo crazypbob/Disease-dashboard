@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { driveFileUrl, isLikelyGoogleDriveRef } from '@/lib/drive';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -45,9 +46,10 @@ export async function GET(request: Request) {
   const ref = normalizeRef((searchParams.get('ref') ?? '').trim());
   if (!ref) return NextResponse.json({ error: 'Invalid ref' }, { status: 400 });
 
-  // Drive ID (legacy) → 더 이상 지원 안 함
-  if (/^[a-zA-Z0-9_-]{10,}$/.test(ref) && !ref.includes('/') && !ref.includes('\\')) {
-    return NextResponse.json({ error: 'PDF 미연결 (Drive 미사용)' }, { status: 404 });
+  if (isLikelyGoogleDriveRef(ref)) {
+    const url = driveFileUrl(ref);
+    if (url) return NextResponse.redirect(url, 302);
+    return NextResponse.json({ error: 'Invalid Drive ref' }, { status: 400 });
   }
 
   const candidates: string[] = [];
