@@ -5,6 +5,7 @@ import type { AccessRequestRow } from '@/lib/access-request-types';
 import {
   listAccessRequestsForAdminAction,
   resolveAccessRequestAdminAction,
+  revokeAccessApprovalAdminAction,
 } from '@/lib/access-request-actions';
 
 export function AccessRequestsAdminClient() {
@@ -13,6 +14,7 @@ export function AccessRequestsAdminClient() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [revokeBusy, setRevokeBusy] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,6 +42,30 @@ export function AccessRequestsAdminClient() {
     }
     setActionMsg(action === 'approve' ? `${res.email} 승인됨` : '거절 처리됨');
     await load();
+  }
+
+  async function revokeApproved(id: number, email: string) {
+    if (
+      !window.confirm(
+        `${email} 의 로그인 허용을 취소합니다.\napproved_users 및 요청 상태가 거절로 바뀝니다. 계속할까요?`
+      )
+    ) {
+      return;
+    }
+    setErr(null);
+    setActionMsg(null);
+    setRevokeBusy(id);
+    try {
+      const res = await revokeAccessApprovalAdminAction({ requestId: id });
+      if (res.error) {
+        setErr(res.error);
+        return;
+      }
+      setActionMsg(`${res.email ?? email}: 승인 취소됨 (다시 로그인 불가)`);
+      await load();
+    } finally {
+      setRevokeBusy(null);
+    }
   }
 
   return (
@@ -106,6 +132,18 @@ export function AccessRequestsAdminClient() {
                   className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
                 >
                   거절
+                </button>
+              </div>
+            )}
+            {r.status === 'approved' && (
+              <div className="flex shrink-0">
+                <button
+                  type="button"
+                  disabled={revokeBusy === r.id}
+                  onClick={() => void revokeApproved(r.id, r.email)}
+                  className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
+                >
+                  {revokeBusy === r.id ? '처리 중…' : '승인 취소 (로그인 막기)'}
                 </button>
               </div>
             )}

@@ -36,6 +36,16 @@ export async function listRecentAccessRequests(limit = 50): Promise<AccessReques
   `) as AccessRequestRow[];
 }
 
+export async function getAccessRequestById(id: number): Promise<AccessRequestRow | null> {
+  const rows = (await sql`
+    SELECT id, email, display_name, note, status, created_at::text, resolved_at::text, resolver_email
+    FROM access_requests
+    WHERE id = ${id}
+    LIMIT 1
+  `) as AccessRequestRow[];
+  return rows[0] ?? null;
+}
+
 export async function hasPendingRequestForEmail(emailLower: string): Promise<boolean> {
   const rows = (await sql`
     SELECT 1 AS ok
@@ -82,5 +92,32 @@ export async function resolveAccessRequest(input: {
         source_request_id = EXCLUDED.source_request_id
     `;
   }
+  return { email };
+}
+
+/** 승인 취소: approved_users에서 제거 + access_requests 를 rejected 로 (로그인 불가) */
+export async function revokeAccessApprovalByRequestId(input: {
+  requestId: number;
+  resolverEmail: string;
+}): Promise<{ email: string } | null> {
+  const rows = (await sql`
+    SELECT id, email, status
+    FROM access_requests
+    WHERE id = ${input.requestId}
+    LIMIT 1
+  `) as { id: number; email: string; status: string }[];
+  if (!rows.length) return null;
+  const row = rows[0];
+  if (row.status !== 'approved') return null;
+  const email = row.email.trim().toLowerCase();
+
+  await sql`DELETE FROM approved_users WHERE lower(email) = ${email}`;
+  await sql`
+    UPDATE access_requests
+    SET status = 'rejected',
+        resolved_at = NOW(),
+        resolver_email = ${input.resolverEmail}
+    WHERE id = ${input.requestId}
+  `;
   return { email };
 }

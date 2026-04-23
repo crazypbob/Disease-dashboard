@@ -10,7 +10,10 @@ import {
   listPendingAccessRequests,
   listRecentAccessRequests,
   resolveAccessRequest,
+  revokeAccessApprovalByRequestId,
+  getAccessRequestById,
 } from '@/lib/user-access-db';
+import { isOwnerEmail } from '@/lib/dashboard-role';
 
 export type SubmitAccessRequestState = { ok?: boolean; error?: string };
 
@@ -98,5 +101,35 @@ export async function resolveAccessRequestAdminAction(input: {
   } catch (e) {
     console.error('[resolveAccessRequestAdminAction]', e);
     return { error: '처리 실패' };
+  }
+}
+
+export async function revokeAccessApprovalAdminAction(input: {
+  requestId: number;
+}): Promise<{ ok?: boolean; email?: string; error?: string }> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email || !canManageAccessRequests(session.user.email)) {
+    return { error: 'Forbidden' };
+  }
+  const resolver = session.user.email;
+  const row = await getAccessRequestById(input.requestId);
+  if (!row || row.status !== 'approved') {
+    return { error: '승인된 요청만 취소할 수 있습니다.' };
+  }
+  if (isOwnerEmail(row.email)) {
+    return { error: '소유자(OWNER_EMAILS) 이메일은 승인 취소할 수 없습니다.' };
+  }
+  try {
+    const result = await revokeAccessApprovalByRequestId({
+      requestId: input.requestId,
+      resolverEmail: resolver,
+    });
+    if (!result) {
+      return { error: '요청을 찾을 수 없거나 이미 취소되었습니다.' };
+    }
+    return { ok: true, email: result.email };
+  } catch (e) {
+    console.error('[revokeAccessApprovalAdminAction]', e);
+    return { error: '승인 취소에 실패했습니다.' };
   }
 }
