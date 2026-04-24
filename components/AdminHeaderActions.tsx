@@ -78,6 +78,12 @@ export function AdminHeaderActions({ isAdmin, showAccessAdmin }: Props) {
             가입 승인
           </Link>
           <Link
+            href="/dashboard/admin/drive-approvals"
+            className="rounded-md border border-zinc-400 bg-white px-2.5 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50"
+          >
+            Drive 승인
+          </Link>
+          <Link
             href="/dashboard/admin/debug-reports"
             className="rounded-md border border-zinc-400 bg-white px-2.5 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50"
           >

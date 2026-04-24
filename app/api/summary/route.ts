@@ -11,6 +11,7 @@ import { canUseMatrixScope } from '@/lib/matrix-viewer-auth';
 import { isInternalDabiOnly } from '@/lib/dashboard-role';
 import { loadFarmCodeLocationMap } from '@/lib/load-farm-locations';
 import { DEFAULT_VET_ASSIGNED_NAME } from '@/lib/viewer-constants';
+import { isApprovedSession } from '@/lib/require-approved';
 
 function parseMatrixScope(raw: string | null): MatrixScope | null {
   if (!raw?.trim()) return null;
@@ -44,6 +45,9 @@ export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!isApprovedSession(session)) {
+    return NextResponse.json({ error: 'Forbidden: approval required' }, { status: 403 });
   }
 
   const email = session.user.email ?? undefined;

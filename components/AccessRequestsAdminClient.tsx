@@ -116,6 +116,17 @@ export function AccessRequestsAdminClient() {
                   ? `${r.display_name.trim()} · ${r.email}`
                   : `(실명 없음) · ${r.email}`}
               </p>
+              {r.drive_email && (
+                <p className="mt-1 text-xs text-zinc-600">
+                  Drive(Gmail): <span className="font-medium">{r.drive_email}</span>
+                </p>
+              )}
+              {r.auth_provider && (
+                <p className="mt-1 text-xs text-zinc-500">
+                  provider:{' '}
+                  <code className="rounded bg-zinc-100 px-1 text-[11px]">{r.auth_provider}</code>
+                </p>
+              )}
               {r.note && <p className="mt-1 text-xs text-zinc-500">{r.note}</p>}
               <p className="mt-1 text-xs text-zinc-400">
                 {r.status} · {r.created_at}

@@ -5,11 +5,15 @@ import { authOptions } from '@/lib/auth';
 import { canManageAccessRequests } from '@/lib/access-admin';
 import { isInternalDabiOnly } from '@/lib/dashboard-role';
 import { DebugReportsAdminClient } from '@/components/DebugReportsAdminClient';
+import { isApprovedSession } from '@/lib/require-approved';
 
 export default async function DebugReportsAdminPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     redirect('/');
+  }
+  if (!isApprovedSession(session)) {
+    redirect('/access-request?reason=needs_approval');
   }
   if (isInternalDabiOnly(session)) {
     redirect('/dashboard?aud=dabi&view=matrix');

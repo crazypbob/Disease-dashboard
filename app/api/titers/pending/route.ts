@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { sql } from '@/lib/db';
+import { isApprovedSession } from '@/lib/require-approved';
 
 export type PendingGroup = {
   farm_code: string;
@@ -24,6 +25,9 @@ function isAllNegativePrrsMh(g: PendingGroup, exclude: boolean): boolean {
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
+  if (session?.user && !isApprovedSession(session)) {
+    return NextResponse.json({ error: 'Forbidden: approval required' }, { status: 403 });
+  }
   const adminEmails = (process.env.ADMIN_EMAILS ?? process.env.ALLOWED_EMAILS ?? '')
     .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
   const isAdmin = session?.user?.email &&
@@ -60,7 +64,7 @@ export async function GET(req: Request) {
     `) as unknown as { farm_code: string; test_date: string; disease: string; count: string; values: string; pdf_file_id: string | null }[];
   } catch (err) {
     // 항체가(P6) 스키마가 아직 적용되지 않은 환경에서는 500 대신 "빈 목록"으로 동작하게 둔다.
-    const anyErr = err as any;
+    const anyErr = err as { code?: string } | null;
     if (anyErr?.code === '42P01') {
       return NextResponse.json({ groups: [], missingTable: 'antibody_titers' });
     }

@@ -11,6 +11,10 @@ function driveAutoShareEnabled(): boolean {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
+export function isDriveAutoShareEnabled(): boolean {
+  return driveAutoShareEnabled();
+}
+
 function supportsAllDrivesForPermissions(): boolean {
   const v = process.env.DRIVE_USE_SHARED_DRIVES?.trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'yes';
@@ -35,7 +39,9 @@ export type DriveShareResult = { ok: true } | { ok: false; message: string };
 
 /** 승인 직후: 폴더에 reader 권한 (이미 있으면 성공 처리). */
 export async function grantReaderOnPdfLibraryFolder(emailRaw: string): Promise<DriveShareResult> {
-  if (!driveAutoShareEnabled()) return { ok: true };
+  if (!driveAutoShareEnabled()) {
+    return { ok: false, message: 'DRIVE_AUTO_SHARE_ON_APPROVE가 비활성화되어 있습니다.' };
+  }
 
   const email = normalizeEmail(emailRaw);
   if (!email) return { ok: false, message: '이메일이 비어 있습니다.' };
@@ -66,7 +72,9 @@ export async function grantReaderOnPdfLibraryFolder(emailRaw: string): Promise<D
 
 /** 승인 취소 시: 해당 이메일의 사용자 권한만 제거 (owner/organizer 제외). */
 export async function revokeReaderOnPdfLibraryFolder(emailRaw: string): Promise<DriveShareResult> {
-  if (!driveAutoShareEnabled()) return { ok: true };
+  if (!driveAutoShareEnabled()) {
+    return { ok: false, message: 'DRIVE_AUTO_SHARE_ON_APPROVE가 비활성화되어 있습니다.' };
+  }
 
   const email = normalizeEmail(emailRaw);
   if (!email) return { ok: false, message: '이메일이 비어 있습니다.' };

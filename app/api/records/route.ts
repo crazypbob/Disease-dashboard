@@ -12,9 +12,10 @@ import {
 } from '@/lib/matrix-region-filters';
 import { canUseMatrixScope } from '@/lib/matrix-viewer-auth';
 import { effectiveMatrixScopeForRestrictedUser } from '@/lib/api-matrix-scope-session';
-import { buildSidoMonthDiseaseAggregates, monthDiseaseKey } from '@/lib/gov-central-aggregate';
+import { buildSidoMonthDiseaseAggregates } from '@/lib/gov-central-aggregate';
 import { parseSidoLabelFromAddress } from '@/lib/farm-sido';
 import { DEFAULT_VET_ASSIGNED_NAME } from '@/lib/viewer-constants';
+import { isApprovedSession } from '@/lib/require-approved';
 
 export type TestRecord = {
   id: number;
@@ -49,29 +50,13 @@ export async function GET(request: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  if (!isApprovedSession(session)) {
+    return NextResponse.json({ error: 'Forbidden: approval required' }, { status: 403 });
+  }
 
   const email = session.user.email ?? undefined;
 
   const { searchParams } = new URL(request.url);
-  // #region agent log
-  fetch('http://127.0.0.1:7612/ingest/8aea60fb-361d-42a0-a3fc-40b103521aac', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '9078ec' },
-    body: JSON.stringify({
-      sessionId: '9078ec',
-      runId: 'pre-fix',
-      hypothesisId: 'H1/H2/H3/H4',
-      location: 'app/api/records/route.ts:GET:start',
-      message: 'api/records called',
-      data: {
-        url: request.url,
-        email: session.user.email ?? null,
-        query: Object.fromEntries(searchParams.entries()),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   const farmParam = searchParams.get('farm');
   const farmCodes = farmParam

@@ -1,5 +1,6 @@
 import type { NextAuthOptions } from 'next-auth';
 import Google from 'next-auth/providers/google';
+import Naver from 'next-auth/providers/naver';
 import Credentials from 'next-auth/providers/credentials';
 import { getSignInPolicy, isOwnerEmail } from '@/lib/dashboard-role';
 import { selectApprovedDashboardRole } from '@/lib/user-access-db';
@@ -49,6 +50,14 @@ export const authOptions = {
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
     }),
+    ...(process.env.NAVER_CLIENT_ID && process.env.NAVER_CLIENT_SECRET
+      ? [
+          Naver({
+            clientId: process.env.NAVER_CLIENT_ID,
+            clientSecret: process.env.NAVER_CLIENT_SECRET,
+          }),
+        ]
+      : []),
     ...(devLocalProvider ? [devLocalProvider] : []),
   ],
   callbacks: {
@@ -63,38 +72,36 @@ export const authOptions = {
       if (!user?.email) return false;
       const email = user.email.toLowerCase();
 
-      if (getSignInPolicy() === 'db_allowlist') {
-        if (isOwnerEmail(email)) return true;
-        if (allowedEmails.includes(email)) return true;
-        try {
-          const approved = await selectApprovedDashboardRole(email);
-          return approved !== null;
-        } catch (e) {
-          console.error('[auth signIn] approved_users 조회 실패:', e);
-          return false;
-        }
-      }
+      // db_allowlist: 로그인 자체는 허용하되(프로필 자동 채움/가입 신청용),
+      // 승인(approved_users) 전에는 /dashboard 및 /api에서 차단한다.
+      if (getSignInPolicy() === 'db_allowlist') return true;
 
       // open (기본): 화이트리스트가 비어 있으면 전원 허용
       if (allowedEmails.length === 0) return true;
       return allowedEmails.includes(email);
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
+      if (account?.provider) token.provider = account.provider;
       if (user?.email) {
         const e = user.email.toLowerCase();
         if (e === DEV_LOCAL_AUTH_EMAIL) {
           token.role = 'owner';
+          token.approved = true;
         } else if (getSignInPolicy() === 'open') {
           token.role = 'owner';
+          token.approved = true;
         } else if (isOwnerEmail(e) || allowedEmails.includes(e)) {
           token.role = 'owner';
+          token.approved = true;
         } else {
           try {
             const fromDb = await selectApprovedDashboardRole(e);
             token.role = fromDb ?? 'internal_dabi';
+            token.approved = fromDb !== null;
           } catch (err) {
             console.error('[auth jwt] role 조회 실패:', err);
             token.role = 'internal_dabi';
+            token.approved = false;
           }
         }
       }
@@ -103,6 +110,8 @@ export const authOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.role = token.role === 'internal_dabi' ? 'internal_dabi' : 'owner';
+        session.user.approved = token.approved ?? true;
+        session.user.provider = token.provider;
       }
       return session;
     },

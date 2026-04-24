@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { sql } from '@/lib/db';
+import { isApprovedSession } from '@/lib/require-approved';
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ALLOWED_EMAILS ?? '')
   .split(',')
@@ -18,6 +19,9 @@ export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!isApprovedSession(session)) {
+    return NextResponse.json({ error: 'Forbidden: approval required' }, { status: 403 });
   }
   if (!isAdmin(session.user.email)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

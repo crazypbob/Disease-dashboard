@@ -5,6 +5,7 @@ import { sql } from '@/lib/db';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as XLSX from 'xlsx';
+import { isApprovedSession } from '@/lib/require-approved';
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ALLOWED_EMAILS ?? '')
   .split(',')
@@ -76,6 +77,9 @@ function findXlsxPath(): string | null {
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isApprovedSession(session)) {
+    return NextResponse.json({ error: 'Forbidden: approval required' }, { status: 403 });
+  }
   if (!isAdmin(session.user.email)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { searchParams } = new URL(req.url);

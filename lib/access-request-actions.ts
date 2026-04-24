@@ -21,31 +21,47 @@ import {
 
 export type SubmitAccessRequestState = { ok?: boolean; error?: string };
 
+function normalizeEmailOrNull(raw: unknown): string | null {
+  const s = String(raw ?? '').trim().toLowerCase();
+  if (!s) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s)) return null;
+  return s;
+}
+
 export async function submitAccessRequestAction(
   _prev: SubmitAccessRequestState,
   formData: FormData
 ): Promise<SubmitAccessRequestState> {
-  const email = String(formData.get('email') ?? '')
-    .trim()
-    .toLowerCase();
+  const email = normalizeEmailOrNull(formData.get('email'));
   const legalName =
     String(formData.get('legalName') ?? formData.get('displayName') ?? '')
       .trim()
       .slice(0, 200) || '';
   const note = String(formData.get('note') ?? '').trim().slice(0, 2000) || null;
+  const driveEmail = normalizeEmailOrNull(formData.get('driveEmail'));
+  const authProvider = String(formData.get('authProvider') ?? '').trim().slice(0, 32) || null;
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email)) {
+  if (!email) {
     return { error: '유효한 이메일을 입력하세요.' };
   }
   if (legalName.length < 2) {
     return { error: '실명을 2자 이상 입력해 주세요.' };
+  }
+  if (authProvider === 'naver' && !driveEmail) {
+    return { error: '네이버 로그인 사용자는 Drive 권한 부여를 위해 Gmail 주소를 추가로 입력해 주세요.' };
   }
 
   try {
     if (await hasPendingRequestForEmail(email)) {
       return { error: '이미 대기 중인 요청이 있습니다. 관리자 승인을 기다려 주세요.' };
     }
-    await insertAccessRequest({ email, displayName: legalName, note });
+    await insertAccessRequest({
+      email,
+      displayName: legalName,
+      driveEmail,
+      authProvider,
+      note,
+    });
   } catch (e) {
     const code = (e as { code?: string })?.code;
     if (code === '42P01') {
@@ -102,7 +118,8 @@ export async function resolveAccessRequestAdminAction(input: {
       return { error: '대기 요청을 찾을 수 없습니다.' };
     }
     if (input.action === 'approve') {
-      const share = await grantReaderOnPdfLibraryFolder(result.email);
+      const target = result.driveEmail ?? result.email;
+      const share = await grantReaderOnPdfLibraryFolder(target);
       if (!share.ok) {
         return {
           ok: true,
@@ -141,7 +158,8 @@ export async function revokeAccessApprovalAdminAction(input: {
     if (!result) {
       return { error: '요청을 찾을 수 없거나 이미 취소되었습니다.' };
     }
-    const share = await revokeReaderOnPdfLibraryFolder(result.email);
+    const target = result.driveEmail ?? result.email;
+    const share = await revokeReaderOnPdfLibraryFolder(target);
     if (!share.ok) {
       return {
         ok: true,

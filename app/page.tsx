@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { getServerSession } from 'next-auth';
 import { authOptions, isLocalHostHeader } from '@/lib/auth';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { NaverSignInButton } from '@/components/NaverSignInButton';
 import { LocalDevSignInButton } from '@/components/LocalDevSignInButton';
 import { LoggedInHomePanel } from '@/components/LoggedInHomePanel';
 
@@ -25,7 +26,7 @@ export default async function HomePage({
 
   if (session?.user) {
     const email = session.user.email ?? '';
-    return <LoggedInHomePanel email={email} />;
+    return <LoggedInHomePanel email={email} approved={session.user.approved ?? true} />;
   }
 
   return (
@@ -47,21 +48,24 @@ export default async function HomePage({
       <div className="flex w-full max-w-sm flex-col items-stretch gap-4">
         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
           <p className="mb-3 text-center text-sm text-zinc-600">
-            처음이신가요? Google 계정으로 신청 후, 관리자 승인이 나면 같은 계정으로 로그인합니다.
+            처음이신가요? 로그인(구글/네이버) 후, 관리자 승인이 나면 같은 계정으로 대시보드를 이용합니다.
           </p>
           <Link
             href="/access-request"
             className="block w-full rounded-md border border-zinc-800 bg-white py-2.5 text-center text-sm font-medium text-zinc-900 shadow-sm hover:bg-zinc-50"
           >
-            회원가입 (Google 계정 · 승인 후 이용)
+            회원가입 (승인 후 이용)
           </Link>
         </div>
         <div className="relative text-center text-xs text-zinc-500">
           <span className="bg-white px-2">또는</span>
           <div className="absolute left-0 right-0 top-1/2 -z-10 h-px bg-zinc-200" aria-hidden />
         </div>
-        <p className="text-center text-xs font-medium text-zinc-600">이미 승인된 계정</p>
-        <GoogleSignInButton />
+        <p className="text-center text-xs font-medium text-zinc-600">로그인</p>
+        <div className="flex flex-col gap-2">
+          <GoogleSignInButton />
+          <NaverSignInButton />
+        </div>
         {showLocalDev && (
           <>
             <p className="max-w-sm text-center text-xs text-zinc-500">

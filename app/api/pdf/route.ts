@@ -12,6 +12,7 @@ import { sql } from '@/lib/db';
 import { driveFileUrl, isLikelyGoogleDriveRef } from '@/lib/drive';
 import * as fs from 'fs';
 import * as path from 'path';
+import { isApprovedSession } from '@/lib/require-approved';
 
 const PDF_BASE_PATH = process.env.PDF_BASE_PATH ?? process.env.SAVE_PATH ?? '';
 
@@ -24,6 +25,9 @@ export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!isApprovedSession(session)) {
+    return NextResponse.json({ error: 'Forbidden: approval required' }, { status: 403 });
   }
 
   const allowed = (process.env.ALLOWED_EMAILS ?? '')

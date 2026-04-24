@@ -5,6 +5,7 @@ import { sql } from '@/lib/db';
 import { canUseMatrixScope } from '@/lib/matrix-viewer-auth';
 import { resolveMatrixScopeFarmCodes, type MatrixScope } from '@/lib/matrix-region-filters';
 import { isInternalDabiOnly } from '@/lib/dashboard-role';
+import { isApprovedSession } from '@/lib/require-approved';
 
 export type TiterRecord = {
   id: number;
@@ -65,6 +66,9 @@ function normalizeFarmCode(raw: string | null | undefined): string | null {
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isApprovedSession(session)) {
+    return NextResponse.json({ error: 'Forbidden: approval required' }, { status: 403 });
+  }
 
   const { searchParams } = new URL(req.url);
   const farmCodes = searchParams.get('farm_codes')?.split(',').map(normalizeFarmCode).filter(Boolean) as string[] | undefined;
@@ -123,7 +127,7 @@ export async function GET(req: Request) {
     `;
   } catch (err) {
     // 항체가(P6) 스키마가 아직 적용되지 않은 환경에서는 500 대신 "빈 목록"으로 동작하게 둔다.
-    const anyErr = err as any;
+    const anyErr = err as { code?: string } | null;
     if (anyErr?.code === '42P01') {
       return NextResponse.json({ records: [], missingTable: 'antibody_titers' });
     }
@@ -137,6 +141,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isApprovedSession(session)) {
+    return NextResponse.json({ error: 'Forbidden: approval required' }, { status: 403 });
+  }
 
   const body: InsertPayload[] = await req.json();
   if (!Array.isArray(body) || body.length === 0)

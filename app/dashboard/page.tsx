@@ -8,6 +8,7 @@ import { DashboardHomeLink } from '@/components/DashboardHomeLink';
 import { redirect } from 'next/navigation';
 import { sessionDashboardRole } from '@/lib/dashboard-role';
 import { canManageAccessRequests } from '@/lib/access-admin';
+import { isApprovedSession } from '@/lib/require-approved';
 
 export default async function DashboardPage({
   searchParams,
@@ -15,6 +16,9 @@ export default async function DashboardPage({
   searchParams: Promise<{ farm?: string; aud?: string; view?: string }>;
 }) {
   const session = await getServerSession(authOptions);
+  if (session?.user && !isApprovedSession(session)) {
+    redirect('/access-request?reason=needs_approval');
+  }
   const params = await searchParams;
   if (!params.aud && !params.view) {
     redirect('/dashboard?aud=dabi&view=matrix');

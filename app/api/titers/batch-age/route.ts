@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { sql } from '@/lib/db';
+import { isApprovedSession } from '@/lib/require-approved';
 
 type Body = {
   farm_code: string;
@@ -20,6 +21,9 @@ function normalizeFarmCode(raw: string | null | undefined): string | null {
 
 export async function PATCH(req: Request) {
   const session = await getServerSession(authOptions);
+  if (session?.user && !isApprovedSession(session)) {
+    return NextResponse.json({ error: 'Forbidden: approval required' }, { status: 403 });
+  }
   const adminEmails = (process.env.ADMIN_EMAILS ?? process.env.ALLOWED_EMAILS ?? '')
     .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
   const isAdmin = session?.user?.email &&

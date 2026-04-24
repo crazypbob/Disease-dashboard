@@ -57,6 +57,8 @@ async function init() {
       id SERIAL PRIMARY KEY,
       email VARCHAR(320) NOT NULL,
       display_name VARCHAR(200),
+      drive_email VARCHAR(320),
+      auth_provider VARCHAR(32),
       note TEXT,
       status VARCHAR(20) NOT NULL DEFAULT 'pending',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -72,10 +74,14 @@ async function init() {
       email VARCHAR(320) PRIMARY KEY,
       dashboard_role VARCHAR(32) NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      source_request_id INT REFERENCES access_requests(id) ON DELETE SET NULL
+      source_request_id INT REFERENCES access_requests(id) ON DELETE SET NULL,
+      drive_email VARCHAR(320),
+      auth_provider VARCHAR(32)
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_approved_users_role ON approved_users(dashboard_role)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_access_requests_drive_email_lower ON access_requests(lower(drive_email))`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_approved_users_drive_email_lower ON approved_users(lower(drive_email))`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS debug_reports (
