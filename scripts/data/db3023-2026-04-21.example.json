@@ -1,0 +1,11 @@
+{
+  "_": "result PDF와 직접 대조한 뒤, pdfId(또는 file/d/... URL)와 결과를 채우고, 이 파일을 복사해 secrets에 두지 말고 로컬에서만 쓰세요.",
+  "date": "2026-04-21",
+  "pdfId": "",
+  "prrsPcr": "-",
+  "prrsElisa": "-",
+  "appPcr": "-",
+  "mhPcr": "-",
+  "mhrPcr": "-",
+  "pedPcr": "-"
+}

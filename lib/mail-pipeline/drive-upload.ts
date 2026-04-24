@@ -73,11 +73,35 @@ function driveCreateOpts(): { supportsAllDrives?: boolean } {
   return { supportsAllDrives: true };
 }
 
+function driveGetOpts(): { supportsAllDrives?: boolean } {
+  if (!useSharedDriveOpts()) return {};
+  return { supportsAllDrives: true };
+}
+
 /** `질병메일링_대시보드` / `검사결과_PDF` — 월 폴더의 부모 (공유·업로드 공통) */
 export async function getOrCreatePdfLibraryFolderId(
   drive: ReturnType<typeof google.drive>
 ): Promise<string> {
   const pdfName = MAIL_CONFIG.PDF_FOLDER_NAME;
+  const envRoot = process.env.DRIVE_ROOT_FOLDER_ID?.trim();
+  if (envRoot) {
+    try {
+      const meta = await drive.files.get({
+        fileId: envRoot,
+        fields: 'name,mimeType',
+        ...driveGetOpts(),
+      });
+      if (
+        meta.data.mimeType === 'application/vnd.google-apps.folder' &&
+        meta.data.name === pdfName
+      ) {
+        return envRoot;
+      }
+    } catch {
+      /* DRIVE_ROOT_FOLDER_ID 가 잘못됐거나 권한 없음 → 아래 일반 해석 */
+    }
+  }
+
   const rootId = await getRootFolderId(drive);
 
   const listOpts = driveListOpts();

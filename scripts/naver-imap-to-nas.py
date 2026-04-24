@@ -9,6 +9,9 @@
   python3 naver-imap-to-nas.py
   python3 naver-imap-to-nas.py --verbose-skip   # TARGET_SENDER 스킵 시 stderr에 사유
 
+선택: IMAP_AUDIT_LOG=/path/to/imap-audit.jsonl
+  → 저장·실패(선택) 시 JSONL 한 줄씩 append. verify-imap-saves-for-day.py 와 짝.
+
 또는 .env 파일 (프로젝트 루트 scripts/ 에 둘 경우):
   NAVER_EMAIL=...
   NAVER_APP_PASSWORD=...
@@ -56,7 +59,7 @@ _load_env_file(_root / ".env.local", overwrite=False)
 if os.name != "nt" or os.environ.get("FORCE_ENV_NAS", "").strip() == "1":
     _load_env_file(_root / "env.nas", overwrite=True)
 
-from datetime import datetime
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 # IMAP date helpers (DD-Mon-YYYY)
@@ -89,6 +92,30 @@ def _get_env():
     target_sender_ = os.environ.get("TARGET_SENDER", "").strip()
     mark_read_ = os.environ.get("MARK_READ", "1") == "1"
     return email_, password_, save_path_, target_sender_, mark_read_
+
+
+def _imap_seq_str(num) -> str:
+    return num.decode("ascii", errors="replace") if isinstance(num, (bytes, bytearray)) else str(num)
+
+
+def _audit_log_path() -> str | None:
+    p = os.environ.get("IMAP_AUDIT_LOG", "").strip()
+    return p or None
+
+
+def _append_imap_audit(rec: dict) -> None:
+    """IMAP_AUDIT_LOG 가 있을 때만 JSONL 한 줄 append."""
+    p = _audit_log_path()
+    if not p:
+        return
+    try:
+        parent = os.path.dirname(os.path.abspath(p))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"[IMAP_AUDIT_LOG] 쓰기 실패: {e}", file=sys.stderr)
 
 
 def safe_filename(s: str, max_len: int = 80) -> str:
@@ -218,6 +245,9 @@ def main():
         "[naver-imap] 참고: Synology/클라이언트의 '위생도평가/26/상반기' 같은 경로는 "
         "이 스크립트가 만들지 않습니다. OCR은 nas-auto-pipeline이 SAVE_PATH 전체를 os.walk 합니다."
     )
+    al = _audit_log_path()
+    if al:
+        print(f"[naver-imap] IMAP_AUDIT_LOG (쓰기): {os.path.abspath(al)}")
 
     try:
         mail = imaplib.IMAP4_SSL("imap.naver.com", 993)
@@ -346,8 +376,34 @@ def main():
                             saved_count += 1
                             has_attachment = True
                             print(f"저장: {os.path.abspath(filepath)}")
+                            abspath = os.path.abspath(filepath)
+                            rel = os.path.relpath(abspath, os.path.abspath(SAVE_PATH))
+                            fnl = filename.lower() if filename else ""
+                            k = "pdf" if fnl.endswith(".pdf") else "file"
+                            _append_imap_audit(
+                                {
+                                    "ts_iso": datetime.now(timezone.utc).isoformat(),
+                                    "imap_seq": _imap_seq_str(num),
+                                    "month_folder": month_folder,
+                                    "file_prefix": prefix,
+                                    "rel_path": rel.replace("\\", "/"),
+                                    "bytes": len(payload),
+                                    "kind": k,
+                                    "subject_head": (subject_decoded or "")[:100],
+                                    "from_head": (from_addr or "")[:100],
+                                }
+                            )
                     except Exception as e:
                         print(f"저장 실패 {filepath}: {e}", file=sys.stderr)
+                        _append_imap_audit(
+                            {
+                                "ts_iso": datetime.now(timezone.utc).isoformat(),
+                                "imap_seq": _imap_seq_str(num),
+                                "month_folder": month_folder,
+                                "file_prefix": prefix,
+                                "error": f"save_attachment: {e}"[:500],
+                            }
+                        )
 
             # 첨부 없으면 .eml로 본문 저장
             if not has_attachment:
@@ -355,10 +411,35 @@ def main():
                 try:
                     with open(eml_path, "wb") as f:
                         f.write(raw)
+                    raw_b = raw if isinstance(raw, (bytes, bytearray)) else bytes(raw)
                     saved_count += 1
                     print(f"저장(eml): {os.path.abspath(eml_path)}")
+                    abse = os.path.abspath(eml_path)
+                    rel = os.path.relpath(abse, os.path.abspath(SAVE_PATH))
+                    _append_imap_audit(
+                        {
+                            "ts_iso": datetime.now(timezone.utc).isoformat(),
+                            "imap_seq": _imap_seq_str(num),
+                            "month_folder": month_folder,
+                            "file_prefix": prefix,
+                            "rel_path": rel.replace("\\", "/"),
+                            "bytes": len(raw_b),
+                            "kind": "eml",
+                            "subject_head": (subject_decoded or "")[:100],
+                            "from_head": (from_addr or "")[:100],
+                        }
+                    )
                 except Exception as e:
                     print(f"eml 저장 실패: {e}", file=sys.stderr)
+                    _append_imap_audit(
+                        {
+                            "ts_iso": datetime.now(timezone.utc).isoformat(),
+                            "imap_seq": _imap_seq_str(num),
+                            "month_folder": month_folder,
+                            "file_prefix": prefix,
+                            "error": f"save_eml: {e}"[:500],
+                        }
+                    )
 
             if MARK_READ:
                 mail.store(num, "+FLAGS", "\\Seen")

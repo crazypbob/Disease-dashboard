@@ -25,6 +25,7 @@
 scripts/.processed_pdfs.txt
 scripts/.drive_sync_rels.tmp
 scripts/.debug-verify-gmail-dump.txt
+scripts/.pdf-gaps.csv
 *.pem
 
 # local editor / tooling

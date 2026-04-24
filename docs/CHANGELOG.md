@@ -4,6 +4,19 @@
 
 ---
 
+## UI·매트릭스·메일 검증 (2026-04-24)
+
+**한줄**: `RecordsMatrix` **헤더/본문 이중 테이블** + **픽셀 `colgroup`·`table-fixed`** 로 세로선 정합, **날짜 블록마다 굵은 왼쪽 구분선**, 열 너비 **단일(`single`) 45px · PRRS 병합 75px · SIV·APP·MH(`ab_ag_merged`)는 `abAgMergedColumnHasBothSlotsInRecords()`로 Ag·Ab가 둘 다 있을 때만 75px·아니면 45px**, 병합 셀 Ag/Ab **간격(`gap-2`)** 확대. **IMAP**: `SETUP-NAVER-OCR` §2.0a에 일별 `verify-imap-saves-for-day.py`·**자동 실행 아님·추후 스케줄** 명시, `naver-imap-to-nas.py` 보강 등. **문서**: `00-DOCS-INDEX`·`OCR-NAS-운영-정리` 정본 포인터, `AGENTS.md` 매트릭스·PDF 갭 절차.
+
+| 구분 | 내용 |
+|------|------|
+| `components/RecordsMatrix.tsx` | 이중 `<table>`·동일 `colgroup`, `scrollbar-gutter:stable`, `cellEdge` 날짜 구분, `matrixDataColWidthPx` |
+| `lib/matrix.ts` | `abAgMergedColumnHasBothSlotsInRecords` export |
+| `docs/SETUP-NAVER-OCR.md` | §2.0a 일별 검증·감사 로그·자동화 로드맵 |
+| 스크립트 (선택 동반) | `verify-imap-saves-for-day.py`, `verify-savepath-mail-tokens.py`, Drive·PDF 링크 점검 스크립트 등 |
+
+---
+
 ## 운영·파싱 (2026-04-11 — PRRS 항체·일령 미입력)
 
 **한줄**: PRRS ELISA **S/P 가짓값 필터**(개체번호 오인 숫자 등), 옵티팜/전북대 파서·`import-ocr-results` 정합, **DB 새로고침 기본 `--replace`·30분 타임아웃**, `verify-prrs-elisa-sources.ts` 검증, **일령 미입력 항체가**는 URL `farm` 선택 농장만·PRRS/MH 전부 음성 구간 그룹 제외.  

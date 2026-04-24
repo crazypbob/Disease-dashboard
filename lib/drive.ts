@@ -31,9 +31,10 @@ export function isLikelyGoogleDriveRef(ref: string | null | undefined): boolean 
   return false;
 }
 
-/** URL에서 Drive 파일 ID 추출 */
-function extractDriveId(input: string): string | null {
-  const t = input.trim();
+/** URL·순수 ID에서 Drive 파일 ID 정규화 (DB·스크립트 공용) */
+export function extractDriveFileId(input: string | null | undefined): string | null {
+  const t = String(input ?? '').trim();
+  if (!t) return null;
   if (/^https?:\/\//i.test(t)) {
     try {
       const u = new URL(t);
@@ -50,7 +51,7 @@ function extractDriveId(input: string): string | null {
 }
 
 export function driveFileUrl(pdfFileId: string | null | undefined): string | null {
-  const id = extractDriveId(pdfFileId ?? '');
+  const id = extractDriveFileId(pdfFileId ?? '');
   if (!id) return null;
   return `https://drive.google.com/file/d/${id}/view?usp=sharing`;
 }

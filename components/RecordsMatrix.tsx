@@ -9,6 +9,7 @@ import { formatAssayLabel, prrsAssaySlot } from '@/lib/assay';
 import { pdfViewUrl } from '@/lib/drive';
 import { parseTestResult } from '@/lib/result-display';
 import {
+  abAgMergedColumnHasBothSlotsInRecords,
   buildMatrixColumns,
   buildSingleCellMap,
   dateHeaderSpans,
@@ -28,6 +29,22 @@ import { DISEASE_FILTER_OPTIONS, DEFAULT_DISEASES } from '@/lib/disease-filter';
 import { SidoAggregateMatrix } from '@/components/SidoAggregateMatrix';
 import type { MatrixScope, PublicVetDemoRegion } from '@/lib/matrix-region-filters';
 import { submitDebugReportAction } from '@/lib/debug-report-actions';
+
+/**
+ * matrix 데이터 열 너비(px): single 45, PRRS 병합 75,
+ * SIV·APP·MH 등 ab_ag_merged 는 **전체 records**에 Ag·Ab가 둘 다 있을 때만 75, 아니면 45.
+ */
+function matrixDataColWidthPx(
+  c: MatrixColumn,
+  records: MatrixRecord[],
+  matrixGrain: MatrixGranularity
+): number {
+  if (c.kind === 'single') return 45;
+  if (c.kind === 'ab_ag_merged') {
+    return abAgMergedColumnHasBothSlotsInRecords(c, records, matrixGrain) ? 75 : 45;
+  }
+  return 75;
+}
 
 function ymd(d: Date): string {
   const y = d.getFullYear();
@@ -420,6 +437,27 @@ export function RecordsMatrix({
     [records, columns, matrixGrain]
   );
 
+  const farmColWidthPx = 66;
+  const matrixTableWidthPx = useMemo(
+    () =>
+      farmColWidthPx +
+      columns.reduce((s, c) => s + matrixDataColWidthPx(c, records, matrixGrain), 0),
+    [columns, records, matrixGrain]
+  );
+
+  const matrixColGroup = useMemo(
+    () => (
+      <colgroup>
+        <col style={{ width: farmColWidthPx, minWidth: farmColWidthPx }} />
+        {columns.map((c) => {
+          const w = matrixDataColWidthPx(c, records, matrixGrain);
+          return <col key={`mcg-${c.key}`} style={{ width: w, minWidth: w }} />;
+        })}
+      </colgroup>
+    ),
+    [columns, records, matrixGrain]
+  );
+
   function setGrainAndUrl(next: MatrixGranularity) {
     setMatrixGrain(next);
     const params = new URLSearchParams(sp?.toString() ?? '');
@@ -483,16 +521,33 @@ export function RecordsMatrix({
     return { showAg: true, showAb: true };
   }
 
-  function renderHeader(col: MatrixColumn) {
+  /** 질병 3행째: 테두리는 h3 쪽 box-border에 모음(이중 border 방지) */
+  const headerRow3Class = 'bg-zinc-50 [overflow-x:hidden] [overflow-y:hidden]';
+  const headerFirstDataCol = ' sticky left-[66px] z-20';
+  /** 본문 셀: per-cell z-index/relative 는 그래픽 레이어를 늘려 헤더·본문이 어긋날 수 있으므로 기본은 생략(검증 ring 등 필요한 곳에만 relative) */
+  const bodyTdBase = 'text-center align-middle';
+  const cellEdge = (isDateGroupStart: boolean) =>
+    `box-border border-t border-b border-r border-t-zinc-200 border-b-zinc-200 border-r-zinc-200 ${
+      isDateGroupStart ? 'border-l-2 border-l-zinc-500' : 'border-l border-l-zinc-200'
+    }`;
+
+  function renderHeader(
+    col: MatrixColumn,
+    isFirstDataColumn: boolean,
+    isDateGroupStart: boolean
+  ) {
+    const firstCol = isFirstDataColumn ? headerFirstDataCol : '';
+    const h3 = `${cellEdge(isDateGroupStart)} px-0.5 py-1 text-center text-[10px] font-normal leading-tight text-zinc-600 ${headerRow3Class}${firstCol}`;
     if (col.kind === 'prrs_merged') {
       const { showAg, showAb } = mergedHeaderSlots(col);
       return (
-        <th
-          key={col.key}
-          className="min-w-[40px] border border-zinc-200 bg-zinc-50 px-1 py-1 text-center text-[10px] font-normal leading-tight text-zinc-600"
-        >
+        <th key={col.key} className={h3}>
           <div className="font-semibold text-zinc-800">PRRS</div>
-          <div className={`mt-0.5 flex justify-center text-[9px] font-medium tracking-tight text-zinc-600 ${showAg && showAb ? 'gap-2.5' : ''}`}>
+          <div
+            className={`mt-0.5 flex w-full min-w-0 items-center justify-center text-[9px] font-medium tracking-tight text-zinc-600 ${
+              showAg && showAb ? 'gap-2' : ''
+            }`}
+          >
             {showAg && <span>Ag</span>}
             {showAb && <span>Ab</span>}
           </div>
@@ -502,12 +557,13 @@ export function RecordsMatrix({
     if (col.kind === 'ab_ag_merged') {
       const { showAg, showAb } = mergedHeaderSlots(col);
       return (
-        <th
-          key={col.key}
-          className="min-w-[40px] border border-zinc-200 bg-zinc-50 px-1 py-1 text-center text-[10px] font-normal leading-tight text-zinc-600"
-        >
+        <th key={col.key} className={h3}>
           <div className="font-semibold text-zinc-800">{col.disease}</div>
-          <div className={`mt-0.5 flex justify-center text-[9px] font-medium tracking-tight text-zinc-600 ${showAg && showAb ? 'gap-2.5' : ''}`}>
+          <div
+            className={`mt-0.5 flex w-full min-w-0 items-center justify-center text-[9px] font-medium tracking-tight text-zinc-600 ${
+              showAg && showAb ? 'gap-2' : ''
+            }`}
+          >
             {showAg && <span>Ag</span>}
             {showAb && <span>Ab</span>}
           </div>
@@ -515,30 +571,31 @@ export function RecordsMatrix({
       );
     }
     return (
-      <th
-        key={col.key}
-        className="max-w-[75px] border border-zinc-200 bg-zinc-50 px-1 py-1 text-center text-[10px] font-normal leading-tight text-zinc-600"
-      >
+      <th key={col.key} className={h3}>
         <div className="font-semibold text-zinc-800">{col.disease}</div>
         <div className="mt-0.5 text-[9px] font-medium text-zinc-600">{formatAssayLabel(col.test_type)}</div>
       </th>
     );
   }
 
-  function renderCell(code: string, col: MatrixColumn, rowIndex: number) {
+  function renderCell(code: string, col: MatrixColumn, rowIndex: number, isDateGroupStart: boolean) {
     const pl = periodLabelForColumn(col);
     const fl = farmName(code);
+    const cEdge = cellEdge(isDateGroupStart);
 
     if (col.kind === 'prrs_merged') {
       const pair = getPrrsPair(records, code, col.date, matrixGrain);
       const hasData = pair.ag || pair.ab;
       if (!hasData) {
-        const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50/50';
+        const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
         return (
-          <td key={col.key} className={`border border-zinc-200 px-1 py-1 text-center align-middle ${rowBg}`} />
+          <td
+            key={col.key}
+            className={`${cEdge} ${bodyTdBase} px-1 py-1 ${rowBg}`}
+          />
         );
       }
-      const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50/50';
+      const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
       const showAg = Boolean(pair.ag);
       const showAb = Boolean(pair.ab);
       const keyAg = pair.ag ? `v1|${code}|${col.key}|PRRS|ag|${pair.ag.id}` : '';
@@ -576,12 +633,18 @@ export function RecordsMatrix({
       return (
         <td
           key={col.key}
-          className={`border border-zinc-200 px-1 py-1 text-center align-middle ${rowBg}`}
+          className={`${cEdge} ${bodyTdBase} px-1 py-1 ${rowBg}`}
         >
-          <div className={`flex items-center justify-center ${showAg && showAb ? 'gap-2.5' : ''}`}>
+          <div
+            className={
+              showAg && showAb
+                ? 'grid w-full min-w-0 grid-cols-2 gap-2 place-items-center'
+                : 'flex w-full min-w-0 items-center justify-center'
+            }
+          >
             {showAg && pair.ag && pkAg && (
               <label
-                className={`flex min-w-[22px] flex-col items-center gap-0.5 ${verifyPicks[keyAg] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
+                className={`flex min-w-0 flex-col items-center gap-0.5 ${verifyPicks[keyAg] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
                 title="항원 (PCR)"
               >
                 {verifyMode && (
@@ -600,7 +663,7 @@ export function RecordsMatrix({
             )}
             {showAb && pair.ab && pkAb && (
               <label
-                className={`flex min-w-[22px] flex-col items-center gap-0.5 ${verifyPicks[keyAb] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
+                className={`flex min-w-0 flex-col items-center gap-0.5 ${verifyPicks[keyAb] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
                 title="항체 (ELISA)"
               >
                 {verifyMode && (
@@ -624,9 +687,14 @@ export function RecordsMatrix({
     if (col.kind === 'ab_ag_merged') {
       const { ag, ab } = getAbAgPairByDisease(records, code, col.date, col.disease, matrixGrain);
       const hasData = ag || ab;
-      const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50/50';
+      const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
       if (!hasData) {
-        return <td key={col.key} className={`border border-zinc-200 px-1 py-1 text-center align-middle ${rowBg}`} />;
+        return (
+          <td
+            key={col.key}
+            className={`${cEdge} ${bodyTdBase} px-1 py-1 ${rowBg}`}
+          />
+        );
       }
       const showAg = Boolean(ag);
       const showAb = Boolean(ab);
@@ -658,11 +726,20 @@ export function RecordsMatrix({
           pdfFileId: ab.pdf_file_id,
         } satisfies MatrixVerifyPick);
       return (
-        <td key={col.key} className={`border border-zinc-200 px-1 py-1 text-center align-middle ${rowBg}`}>
-          <div className={`flex items-center justify-center ${showAg && showAb ? 'gap-2.5' : ''}`}>
+        <td
+          key={col.key}
+          className={`${cEdge} ${bodyTdBase} px-1 py-1 ${rowBg}`}
+        >
+          <div
+            className={
+              showAg && showAb
+                ? 'grid w-full min-w-0 grid-cols-2 gap-2 place-items-center'
+                : 'flex w-full min-w-0 items-center justify-center'
+            }
+          >
             {showAg && ag && pkAg && (
               <label
-                className={`flex min-w-[22px] flex-col items-center gap-0.5 ${verifyPicks[keyAg] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
+                className={`flex min-w-0 flex-col items-center gap-0.5 ${verifyPicks[keyAg] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
                 title="항원 (PCR)"
               >
                 {verifyMode && (
@@ -681,7 +758,7 @@ export function RecordsMatrix({
             )}
             {showAb && ab && pkAb && (
               <label
-                className={`flex min-w-[22px] flex-col items-center gap-0.5 ${verifyPicks[keyAb] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
+                className={`flex min-w-0 flex-col items-center gap-0.5 ${verifyPicks[keyAb] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
                 title="항체 (ELISA)"
               >
                 {verifyMode && (
@@ -705,9 +782,12 @@ export function RecordsMatrix({
 
     const cell = singleCellMap.get(code)?.get(col.key);
     if (!cell) {
-      const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50/50';
+      const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
       return (
-        <td key={col.key} className={`border border-zinc-200 px-1 py-0.5 text-center text-xs align-middle ${rowBg}`} />
+        <td
+          key={col.key}
+          className={`${cEdge} ${bodyTdBase} px-1 py-0.5 text-xs ${rowBg}`}
+        />
       );
     }
     const url = cell.pdf_file_id ? pdfViewUrl(cell.id, cell.pdf_file_id) : null;
@@ -746,11 +826,13 @@ export function RecordsMatrix({
       pdfFileId: cell.pdf_file_id,
     };
 
-    const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50/50';
+    const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
     return (
       <td
         key={col.key}
-        className={`border border-zinc-200 px-1 py-0.5 text-center text-xs align-middle ${rowBg} ${verifyPicks[vKey] ? 'ring-2 ring-inset ring-amber-400/60' : ''}`}
+        className={`${cEdge} ${bodyTdBase} px-1 py-0.5 text-xs ${rowBg} ${
+          verifyPicks[vKey] ? 'relative ring-2 ring-inset ring-amber-400/60' : ''
+        }`}
       >
         {verifyMode && (
           <div className="mb-0.5 flex justify-center">
@@ -1081,42 +1163,68 @@ export function RecordsMatrix({
               </span>
             )}
           </p>
-          <div className="min-w-0 overflow-x-auto rounded border border-zinc-200">
-            <table className="min-w-max border-collapse text-xs">
-              <thead className="sticky top-0 z-20 bg-zinc-50 shadow-sm">
-                <tr>
-                  <th
-                    rowSpan={3}
-                    className="sticky left-0 z-30 min-w-[66px] border border-zinc-200 bg-zinc-100 px-1.5 py-1.5 text-left text-[11px] font-semibold text-zinc-800"
-                  >
-                    <div>농장</div>
-                    <div className="mt-1 text-[10px] font-medium text-zinc-600">
-                      {yearSpans.map((s) => `${s.year.slice(2)}년`).join('·')}
-                    </div>
-                  </th>
-                  {yearSpans.map((span) => (
+          <div className="min-w-0 max-h-[min(75vh,920px)] overflow-auto [scrollbar-gutter:stable] rounded border border-zinc-200 scroll-smooth">
+            <div className="sticky top-0 z-[210] w-max min-w-full isolate [transform:translateZ(0)] border-b border-zinc-300 bg-zinc-50 shadow-[0_2px_4px_rgba(0,0,0,0.07)]">
+              <table
+                className="table-fixed border-separate border-spacing-0 text-xs [background-clip:padding-box]"
+                style={{ width: matrixTableWidthPx, minWidth: matrixTableWidthPx }}
+              >
+                {matrixColGroup}
+                <thead>
+                  <tr>
                     <th
-                      key={span.year}
-                      colSpan={span.count}
-                      className="sticky left-[66px] z-20 border border-zinc-200 bg-zinc-50 px-1 py-1 text-center text-[9px] font-semibold text-zinc-600 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]"
+                      rowSpan={3}
+                      className="sticky left-0 z-[30] box-border w-[66px] min-w-[66px] border border-zinc-200 bg-zinc-100 px-1.5 py-1.5 text-left text-[11px] font-semibold text-zinc-800 shadow-[2px_0_0_0_#d4d4d8,2px_2px_6px_-2px_rgba(0,0,0,0.08)]"
                     >
-                      {span.year.slice(2)}년
+                      <div>농장</div>
+                      <div className="mt-1 text-[10px] font-medium text-zinc-600">
+                        {yearSpans.map((s) => `${s.year.slice(2)}년`).join('·')}
+                      </div>
                     </th>
-                  ))}
-                </tr>
-                <tr>
-                  {dateSpans.map((span) => (
-                    <th
-                      key={span.date}
-                      colSpan={span.count}
-                      className="border border-zinc-200 px-1 py-1 text-center text-[9px] font-medium text-zinc-600"
-                    >
-                      {matrixGrain === 'week' ? formatWeekRangeLabel(span.date) : formatMonthDay(span.date)}
-                    </th>
-                  ))}
-                </tr>
-                <tr>{columns.map((c) => renderHeader(c))}</tr>
-              </thead>
+                    {yearSpans.map((span, yi) => (
+                      <th
+                        key={span.year}
+                        colSpan={span.count}
+                        className={
+                          (yi === 0 ? 'sticky left-[66px] z-20 ' : '') +
+                          'box-border border border-zinc-200 bg-zinc-50 px-1 py-1 text-center text-[9px] font-semibold text-zinc-600 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]'
+                        }
+                      >
+                        {span.year.slice(2)}년
+                      </th>
+                    ))}
+                  </tr>
+                  <tr>
+                    {dateSpans.map((span, di) => (
+                      <th
+                        key={span.date}
+                        colSpan={span.count}
+                        className={
+                          (di === 0 ? 'sticky left-[66px] z-20 ' : '') +
+                          (di > 0
+                            ? 'box-border border border-zinc-200 border-l-2 border-l-zinc-500 bg-zinc-50 '
+                            : 'box-border border border-zinc-200 bg-zinc-50 ') +
+                          'px-1 py-1 text-center text-[9px] font-medium text-zinc-600 shadow-[0_2px_6px_-2px_rgba(0,0,0,0.06)]'
+                        }
+                      >
+                        {matrixGrain === 'week' ? formatWeekRangeLabel(span.date) : formatMonthDay(span.date)}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr>
+                    {columns.map((c, i) =>
+                      renderHeader(c, i === 0, i > 0 && c.date !== columns[i - 1]!.date)
+                    )}
+                  </tr>
+                </thead>
+              </table>
+            </div>
+            <div className="relative z-0 -mt-px min-w-0">
+              <table
+                className="table-fixed border-separate border-spacing-0 text-xs [background-clip:padding-box]"
+                style={{ width: matrixTableWidthPx, minWidth: matrixTableWidthPx }}
+              >
+              {matrixColGroup}
               <tbody>
                 {farmRowsByGroupData.map(({ group, codes }) => {
                   const isCollapsed = collapsedGroups.has(group);
@@ -1125,7 +1233,7 @@ export function RecordsMatrix({
                       <tr className="bg-zinc-100">
                         <th
                           colSpan={columns.length + 1}
-                          className="sticky left-0 z-10 border border-zinc-200 px-2 py-1 text-left text-xs font-semibold text-zinc-700"
+                          className="border border-zinc-200 bg-zinc-100 px-2 py-1 text-left text-xs font-semibold text-zinc-800"
                         >
                           <button
                             type="button"
@@ -1142,15 +1250,22 @@ export function RecordsMatrix({
                       {!isCollapsed &&
                         codes.map((code) => {
                           const idx = globalRowIndex++;
-                          const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50/50';
+                          const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
                           return (
                             <tr key={code} className={`hover:bg-blue-50/30 ${rowBg}`}>
                               <th
-                                className={`sticky left-0 z-10 border border-zinc-200 px-1.5 py-1 text-left text-[11px] font-medium text-zinc-800 ${rowBg}`}
+                                className={`sticky left-0 z-[1] box-border w-[66px] min-w-[66px] border border-zinc-200 px-1.5 py-1 text-left text-[11px] font-medium text-zinc-800 ${rowBg}`}
                               >
                                 {farmName(code)}
                               </th>
-                              {columns.map((col) => renderCell(code, col, idx))}
+                              {columns.map((col, colI) =>
+                                renderCell(
+                                  code,
+                                  col,
+                                  idx,
+                                  colI > 0 && col.date !== columns[colI - 1]!.date
+                                )
+                              )}
                             </tr>
                           );
                         })}
@@ -1159,6 +1274,7 @@ export function RecordsMatrix({
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}

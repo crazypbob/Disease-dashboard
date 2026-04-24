@@ -21,7 +21,7 @@
 | `../개발일지.md` | 매일 진행상황(Why/Next) 기록 |
 | `../최신명령어.md` | 오늘 기준 유효 명령(운영/재처리)만 유지 |
 | `COMMANDS.md` | 입력 가능한 모든 명령어 모음 |
-| `CHANGELOG.md` | 드랍·변경 사항 요약 |
+| `CHANGELOG.md` | 드랍·변경 사항 요약(예: 2026-04-24 매트릭스·IMAP 검증) |
 | `STATUS-SNAPSHOT.md` | 현재 진행상태 1페이지 요약(상세는 ROADMAP 참조) |
 | `WINDOWS-EXECUTIONPOLICY.md` | PowerShell npx 차단 우회 |
 
@@ -34,8 +34,8 @@
 | `DEPLOYMENT-HOSTING.md` | **웹 호스팅 vs 운영 아키텍처**(채택안·대안·배포 체크리스트) |
 | `SECURITY-REPO-ACCESS.md` | Git Private·Vercel 접근·시크릿 비공개 체크리스트 |
 | `PIPELINE.md` | NAS 파이프라인 흐름, 폴더 구조 |
-| `SETUP-NAVER-OCR.md` | 네이버 IMAP, OCR Docker, 자동 감시 |
-| `OCR-NAS-운영-정리.md` | OCR·전북대 표 파싱·watcher·DB·나스 단독 운영 요약 (2026-03-26) |
+| `SETUP-NAVER-OCR.md` | 네이버 IMAP, OCR Docker, `verify-imap-saves-for-day`(수동·추후 스케줄) |
+| `OCR-NAS-운영-정리.md` | 2026-03-26 **스냅샷**(상세·갱신은 `PIPELINE`·`SETUP-NAVER-OCR` 우선) |
 | `OPS-AUTOMATION.md` | NAS 상시 운영 자동화 권장안(스케줄 등록 예) |
 | `../SETUP.md` | 환경변수, DB 초기화, 로컬 실행 |
 
@@ -51,6 +51,7 @@
 | `REFERENCE.md` | 스크립트 목록, 농장매핑, AI 검증, 레거시 |
 | `IMPORT-RUNBOOK.md` | results.xlsx → DB 운영 표준 |
 | `DATA-VERIFY-RUNBOOK.md` | PDF/DB 대조 검증 루틴 |
+| `../AGENTS.md` (PDF·Drive 링크 갭) | `report-pdf-link-gaps.ts` → `sync-pdfs-to-drive` / `find-pdfs-under-savepath` / `link-josan-pdf` / `report-drive-pdf-orphans.ts` 순서 요약 |
 | `RUNBOOK-DRIVE-REPARSING.md` | Drive 재파싱/재처리 런북 |
 | `OAUTH-REDIRECT-URIS.md` | OAuth redirect URI 참고 |
 | `특허명세서_초안.md` | 출원용 명세 |

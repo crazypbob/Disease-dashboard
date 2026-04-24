@@ -346,6 +346,30 @@ export function getAbAgPairByDisease(
   return { ag, ab };
 }
 
+/**
+ * ab_ag_merged 열(SIV·APP·MH 등) — records 전체에서 해당 bucket+질병에 Ag·Ab 슬롯이
+ * 둘 다 등장하는지(농장 무관). 둘 다 있을 때만 넓은 열(75px), 아니면 45px.
+ */
+export function abAgMergedColumnHasBothSlotsInRecords(
+  col: Extract<MatrixColumn, { kind: 'ab_ag_merged' }>,
+  records: MatrixRecord[],
+  granularity: MatrixGranularity
+): boolean {
+  const d = col.disease.trim().toUpperCase();
+  const date = col.date;
+  let hasAg = false;
+  let hasAb = false;
+  for (const r of records) {
+    if (r.disease.trim().toUpperCase() !== d) continue;
+    if (granularity === 'week' ? mondayOfWeek(r.date) !== date : r.date !== date) continue;
+    const slot = prrsAssaySlot(r.test_type);
+    if (slot === 'ag') hasAg = true;
+    if (slot === 'ab') hasAb = true;
+    if (hasAg && hasAb) return true;
+  }
+  return false;
+}
+
 export function buildSingleCellMap(
   records: MatrixRecord[],
   columns: MatrixColumn[],
