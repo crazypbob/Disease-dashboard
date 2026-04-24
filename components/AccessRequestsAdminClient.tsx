@@ -10,6 +10,8 @@ import {
 
 export function AccessRequestsAdminClient() {
   const [scope, setScope] = useState<'pending' | 'all'>('pending');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [page, setPage] = useState(0);
   const [rows, setRows] = useState<AccessRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -17,10 +19,16 @@ export function AccessRequestsAdminClient() {
   const [driveShareWarning, setDriveShareWarning] = useState<string | null>(null);
   const [revokeBusy, setRevokeBusy] = useState<number | null>(null);
 
+  const limit = 100;
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
-    const data = await listAccessRequestsForAdminAction(scope);
+    const data = await listAccessRequestsForAdminAction(scope, {
+      limit,
+      offset: page * limit,
+      status: statusFilter,
+    });
     if (data.error) {
       setErr(data.error);
       setRows([]);
@@ -28,7 +36,7 @@ export function AccessRequestsAdminClient() {
       setRows(data.requests);
     }
     setLoading(false);
-  }, [scope]);
+  }, [page, scope, statusFilter]);
 
   useEffect(() => {
     void load();
@@ -94,6 +102,20 @@ export function AccessRequestsAdminClient() {
         >
           최근 전체
         </button>
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value as typeof statusFilter);
+            setPage(0);
+          }}
+          className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-700"
+          title="상태 필터"
+        >
+          <option value="all">상태: 전체</option>
+          <option value="pending">상태: pending</option>
+          <option value="approved">상태: approved</option>
+          <option value="rejected">상태: rejected</option>
+        </select>
         <button
           type="button"
           onClick={() => void load()}
@@ -107,6 +129,32 @@ export function AccessRequestsAdminClient() {
       {actionMsg && <p className="text-sm text-green-700">{actionMsg}</p>}
       {driveShareWarning && <p className="text-sm text-amber-800">{driveShareWarning}</p>}
       {!loading && rows.length === 0 && <p className="text-sm text-zinc-500">목록이 비어 있습니다.</p>}
+
+      {scope === 'all' && (
+        <div className="flex items-center justify-between gap-2 text-sm text-zinc-600">
+          <div>
+            페이지: <span className="font-medium">{page + 1}</span> (페이지당 {limit}개)
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              이전
+            </button>
+            <button
+              type="button"
+              disabled={rows.length < limit}
+              onClick={() => setPage((p) => p + 1)}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              다음
+            </button>
+          </div>
+        </div>
+      )}
       <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white">
         {rows.map((r) => (
           <li key={r.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">

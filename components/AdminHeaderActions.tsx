@@ -11,12 +11,25 @@ type Props = {
 
 export function AdminHeaderActions({ isAdmin, showAccessAdmin }: Props) {
   const [status, setStatus] = useState<{ loading?: string; ok?: string; err?: string }>({});
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   useEffect(() => {
     if (!status.loading && !status.ok && !status.err) return;
     const t = setTimeout(() => setStatus({}), 5000);
     return () => clearTimeout(t);
   }, [status]);
+
+  useEffect(() => {
+    if (!toolsOpen) return;
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-admin-tools-root="1"]')) return;
+      setToolsOpen(false);
+    }
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [toolsOpen]);
 
   async function runImportOcr() {
     setStatus({ loading: 'OCR 결과 DB 반영 중...' });
@@ -93,34 +106,54 @@ export function AdminHeaderActions({ isAdmin, showAccessAdmin }: Props) {
       )}
       {!isAdmin ? null : (
         <>
-      <span className="hidden text-xs font-medium text-amber-800 md:inline">관리자</span>
-      <button
-        type="button"
-        onClick={runImportOcr}
-        disabled={!!status.loading}
-        className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-        title="OCR results.xlsx를 DB에 반영합니다 (--replace: 동일 PDF·검사 행 업데이트)"
-      >
-        DB 새로고침
-      </button>
-      <button
-        type="button"
-        onClick={loadParseIssues}
-        disabled={!!status.loading}
-        title="ELISA 판정열 미해독으로 S/P 폴백한 케이스"
-        className="rounded-md border border-amber-600 bg-white px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50"
-      >
-        폴백 목록
-      </button>
-      <button
-        type="button"
-        onClick={loadReadingHistory}
-        disabled={!!status.loading}
-        title="OCR 결과 파일 기준으로 PDF/OCR/DB 반영 여부를 요약합니다"
-        className="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-      >
-        리딩내역
-      </button>
+          <span className="hidden text-xs font-medium text-amber-800 md:inline">관리자</span>
+          <div className="relative" data-admin-tools-root="1">
+            <button
+              type="button"
+              onClick={() => setToolsOpen((v) => !v)}
+              className="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50"
+              aria-expanded={toolsOpen}
+            >
+              관리자 도구
+            </button>
+            {toolsOpen && (
+              <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setToolsOpen(false);
+                    void runImportOcr();
+                  }}
+                  disabled={!!status.loading}
+                  className="block w-full px-3 py-2 text-left text-xs text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  DB 새로고침
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setToolsOpen(false);
+                    void loadParseIssues();
+                  }}
+                  disabled={!!status.loading}
+                  className="block w-full px-3 py-2 text-left text-xs text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  폴백 목록
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setToolsOpen(false);
+                    void loadReadingHistory();
+                  }}
+                  disabled={!!status.loading}
+                  className="block w-full px-3 py-2 text-left text-xs text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  리딩내역
+                </button>
+              </div>
+            )}
+          </div>
       {status.loading && <span className="text-xs text-amber-700">{status.loading}</span>}
       {status.ok && <span className="text-xs text-green-700">{status.ok}</span>}
       {status.err && <span className="text-xs text-red-700">{status.err}</span>}

@@ -78,15 +78,26 @@ export async function submitAccessRequestAction(
 }
 
 export async function listAccessRequestsForAdminAction(
-  scope: 'pending' | 'all'
+  scope: 'pending' | 'all',
+  opts?: { limit?: number; offset?: number; status?: 'pending' | 'approved' | 'rejected' | 'all' }
 ): Promise<{ requests: AccessRequestRow[]; error?: string }> {
   const session = await getServerSession(authOptions);
   if (!canManageAccessRequests(session?.user?.email)) {
     return { requests: [], error: 'Forbidden' };
   }
   try {
-    const requests =
-      scope === 'all' ? await listRecentAccessRequests(80) : await listPendingAccessRequests();
+    const limit = Math.min(Math.max(opts?.limit ?? (scope === 'all' ? 200 : 200), 1), 1000);
+    const offset = Math.max(opts?.offset ?? 0, 0);
+    const status = opts?.status ?? (scope === 'pending' ? 'pending' : 'all');
+
+    // v1: DB 함수가 limit/offset을 지원하지 않아도, 화면 보존을 위해 우선 전체를 더 많이 가져오고 클라이언트에서 slice한다.
+    // (차후 필요하면 user-access-db에 pagination 쿼리를 추가해 최적화)
+    let requests =
+      scope === 'all' ? await listRecentAccessRequests(1000) : await listPendingAccessRequests();
+    if (status !== 'all') {
+      requests = requests.filter((r) => r.status === status);
+    }
+    requests = requests.slice(offset, offset + limit);
     return { requests };
   } catch (e) {
     const code = (e as { code?: string })?.code;

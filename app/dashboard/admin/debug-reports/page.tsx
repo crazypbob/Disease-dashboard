@@ -1,11 +1,11 @@
 import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
 import { authOptions } from '@/lib/auth';
 import { canManageAccessRequests } from '@/lib/access-admin';
 import { isInternalDabiOnly } from '@/lib/dashboard-role';
 import { DebugReportsAdminClient } from '@/components/DebugReportsAdminClient';
 import { isApprovedSession } from '@/lib/require-approved';
+import { AdminTabs } from '@/components/AdminTabs';
 
 export default async function DebugReportsAdminPage() {
   const session = await getServerSession(authOptions);
@@ -26,14 +26,7 @@ export default async function DebugReportsAdminPage() {
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-lg font-semibold text-zinc-900">디버그 리포트 (매트릭스 검증 전송)</h1>
-        <div className="flex gap-3 text-sm">
-          <Link href="/dashboard/admin/access" className="text-zinc-600 underline hover:text-zinc-900">
-            가입 승인
-          </Link>
-          <Link href="/dashboard?aud=dabi&view=matrix" className="text-zinc-600 underline hover:text-zinc-900">
-            대시보드
-          </Link>
-        </div>
+        <AdminTabs />
       </div>
       <p className="mb-4 text-sm text-zinc-600">
         매트릭스 검증 모드에서 「관리자에게 전송」으로 DB에 접수된 내역입니다. 메일 사본은 제목{' '}
