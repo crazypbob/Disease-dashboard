@@ -1,54 +1,15 @@
-# 작업 시작 시 첫 읽기
+# 에이전트 규칙 (disease-dashboard)
 
-**이 프로젝트에서 작업을 시작할 때는 반드시 아래 순서로 읽어주세요.**
+- Cursor 규칙: `/.cursor/rules/*.mdc` — **전역 필수**는 [real-paths-in-commands](.cursor/rules/real-paths-in-commands.mdc) (명령어/복붙 예시는 **실제 절대 경로만**, `X:/.../` placeholder 금지).
+- `CLAUDE.md`는 이 파일을 참조한다.
 
-1. **`00-READ-ME-FIRST.md`** — 읽기 순서, 전환 목표 요약
-2. **`PROJECT-CONTEXT.md`** — 프로젝트 개요, 파이프라인, 주요 경로, 스크립트, 환경변수
-3. **`docs/CHANGELOG.md`** — 최근 변경사항 (특히 OCR 파서 수정 내역)  
-4. **`docs/ROADMAP-PATENT-STATUS.md`** (필요 시) — 특허·로드맵·구현 현황 단일 요약
+## 가입 승인 시 Google Drive PDF 뷰어 공유 (Vercel 등)
 
-**작업 PC가 둘 이상**(예: 집 데스크톱 vs 외부 노트북)이면, Cursor 규칙 **`.cursor/rules/work-environment-machines.mdc`** — 경로·포트·실행 중인 서버를 한 환경에만 맞추지 말 것.
-
-**NAS에 SSH(bash)로 명령을 안내**할 때는 Cursor 규칙 **`.cursor/rules/nas-ssh-path-first.mdc`** — `X:\` 같은 Windows 경로를 그대로 쓰지 말고, **맨 앞에** `find`/`ls` 등으로 실제 경로를 잡는 블록을 둘 것.
-
----
-
-## OCR 파이프라인 파서 규칙
-
-`ocr-pipeline/app/parser.py` 수정 시 반드시 확인:
-
-### 전북대(jb5219) 파일명 패턴 — 두 가지 형식이 공존함
-
-| 형식 | 파일명 예시 |
-|------|-----------|
-| **신규 (2025~)** | `20250305_2006대월(한지현) 최종 결과 보고서_jb5219_PRRS ELISA.pdf` |
-| **구형 (네스트)** | `20240903_24-1138_PED_PCR_놀뫼농장_동물진료법인네스트.pdf` |
-
-- 감지 조건: `jb5219` 또는 `네스트` 또는 `전북대` — PCR/ELISA 키워드만으로 감지하지 말 것
-- 농장명 형식: `2006대월`, `3001조산` (4자리 숫자코드 + 농장명) → `getFarmCode()`에서 DB코드 자동 변환
-- 검사종류 매핑: `JBNU_TEST_TYPE_MAP` 참조 (세균 배양, 항생제내성 등 포함)
-- 상세: `docs/CHANGELOG.md` → "전북대 파서 전면 수정" 섹션
-
-### 농장 코드 매핑
-
-- `lib/farms.ts` — DB코드 ↔ 농장명 원본 DB
-- `lib/mail-pipeline/farm-mapping.ts` — `getFarmCode()`: 농장명/코드 alias → DB코드
-  - `'2006대월'` → `DB2006`, `'조산'` → `DB3001` 등 substring 검색 포함
-  - 4자리 숫자만 있는 경우(`'2006'`)도 alias로 등록됨
-
----
-
-## 매트릭스 검증 오류 메일·Gmail 덤프
-
-- 웹에서는 `/dashboard/admin/debug-reports`에서 DB 접수분을 확인합니다.
-- `ADMIN_DEBUG_EMAIL` 수신함(Gmail)에서 제목 `DiseaseDashboard:Verify` 또는 예전 `[디버그]`·`매트릭스 검증`으로 검색할 수 있습니다.
-- 로컬(`.env.local`에 Gmail OAuth)에서 **`npm run dump:debug-gmail`** → `scripts/.debug-verify-gmail-dump.txt`에 본문을 모읍니다. 출력 경로는 `--out=`으로 변경 가능. 이 파일을 열고 파서·`docs/TITER-PDF-OCR-RULES.md`·`ocr-pipeline/app/parser.py` 수정안을 논의하면 됩니다.
-- Drive·재파싱·sync 절차: **`docs/RUNBOOK-DRIVE-REPARSING.md`**
-
----
-
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
+- **동작**: 관리자가 가입 요청을 **승인**하면 `검사결과_PDF` 상위 폴더에 해당 Google 이메일을 **reader** 로 추가하고, **승인 취소** 시 제거합니다. 대시보드의 `drive.google.com/file/d/...` 원본 링크를 브라우저에서 열 수 있게 하기 위함입니다.
+- **켜기**: `DRIVE_AUTO_SHARE_ON_APPROVE=1` (또는 `true` / `yes`). 꺼 두면 Drive API를 호출하지 않습니다.
+- **폴더 ID**: 기본은 `DRIVE_ROOT_FOLDER_ID` + `질병메일링_대시보드` / `검사결과_PDF` 로 해석합니다. 직접 지정하려면 `DRIVE_SHARE_FOLDER_ID` 에 해당 폴더의 Drive ID를 넣습니다.
+- **공유 드라이브(팀 드라이브)**: PDF가 팀 드라이브에 있으면 `DRIVE_USE_SHARED_DRIVES=1` 을 함께 설정하세요. (`lib/mail-pipeline/drive-upload.ts` 의 list/create·권한 API에 동일 플래그가 적용됩니다.)
+- **전제**: `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` 으로 쓰는 OAuth 계정이 그 폴더에 **소유 또는 공유 가능 권한**이 있어야 합니다. Google Workspace에서 **외부(@gmail.com) 공유**가 막혀 있으면 API가 실패합니다.
+- **실패 시**: DB 승인/취소는 그대로 반영되고, 관리자 화면에 **Drive 공유 실패** 안내(amber)만 뜹니다.
+- **기존 승인자 백필**: `npx tsx scripts/backfill-drive-share-approved.ts --dry-run` 후, `DRIVE_AUTO_SHARE_ON_APPROVE=1` 과 함께 동일 스크립트를 인자 없이 실행.
+- **범위 밖**: `ALLOWED_EMAILS` 만으로 들어온 계정은 `approved_users` 와 별개라 자동 공유 대상이 아닙니다. NAS 등 개인 보관 경로(예: 위생도평가)는 이 기능과 무관하며, 메일 파이프라인 추적은 **제목·첨부 파일명** 기준이면 됩니다.

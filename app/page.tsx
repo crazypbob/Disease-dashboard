@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions, isLocalHostHeader } from '@/lib/auth';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { LocalDevSignInButton } from '@/components/LocalDevSignInButton';
+import { LoggedInHomePanel } from '@/components/LoggedInHomePanel';
 
 export default async function HomePage({
   searchParams,
@@ -23,23 +24,8 @@ export default async function HomePage({
   }
 
   if (session?.user) {
-    return (
-      <div className="flex min-h-full flex-col items-center justify-center gap-4">
-        <p className="text-zinc-600">로그인됨: {session.user.email}</p>
-        <Link
-          href="/dashboard"
-          className="rounded-md bg-black px-4 py-2 text-white hover:bg-zinc-800"
-        >
-          대시보드
-        </Link>
-        <Link
-          href="/api/auth/signout"
-          className="text-sm text-zinc-500 hover:underline"
-        >
-          로그아웃
-        </Link>
-      </div>
-    );
+    const email = session.user.email ?? '';
+    return <LoggedInHomePanel email={email} />;
   }
 
   return (

@@ -83,10 +83,28 @@ async function main() {
         const ab = pair.ab;
         const rec = ag || ab;
         const url = rec?.pdf_file_id ? `${BASE}/api/pdf?id=${rec.id}` : null;
-        const agSym = ag ? parseTestResult(ag.result).symbol : '—';
-        const abSym = ab ? parseTestResult(ab.result).symbol : '—';
-        const agClass = ag && parseTestResult(ag.result).variant === 'positive' ? 'pos' : ag ? 'neg' : '';
-        const abClass = ab && parseTestResult(ab.result).variant === 'positive' ? 'pos' : ab ? 'neg' : '';
+        const agSym = ag
+          ? parseTestResult(ag.result, { disease: ag.disease, testType: ag.test_type }).symbol
+          : '—';
+        const abSym = ab
+          ? parseTestResult(ab.result, { disease: ab.disease, testType: ab.test_type }).symbol
+          : '—';
+        const agClass =
+          ag &&
+          parseTestResult(ag.result, { disease: ag.disease, testType: ag.test_type }).variant ===
+          'positive'
+            ? 'pos'
+            : ag
+              ? 'neg'
+              : '';
+        const abClass =
+          ab &&
+          parseTestResult(ab.result, { disease: ab.disease, testType: ab.test_type }).variant ===
+          'positive'
+            ? 'pos'
+            : ab
+              ? 'neg'
+              : '';
         const link = url ? `<a href="${url}" target="_blank">Ag:${agSym} Ab:${abSym}</a>` : `<span class="no-link">Ag:${agSym} Ab:${abSym}</span>`;
         html += `<td>${link} <span class="check">□</span></td>`;
       } else {
@@ -95,7 +113,10 @@ async function main() {
           html += '<td>—</td>';
         } else {
           const url = cell.pdf_file_id ? `${BASE}/api/pdf?id=${cell.id}` : null;
-          const { symbol, variant } = parseTestResult(cell.result);
+          const { symbol, variant } = parseTestResult(cell.result, {
+            disease: cell.disease,
+            testType: cell.test_type,
+          });
           const cls = variant === 'positive' ? 'pos' : variant === 'negative' ? 'neg' : '';
           const link = url ? `<a href="${url}" target="_blank" class="${cls}">${symbol}</a>` : `<span class="${cls}">${symbol}</span>`;
           html += `<td>${link} <span class="check">□</span></td>`;

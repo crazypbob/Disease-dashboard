@@ -53,6 +53,26 @@ export async function GET(request: Request) {
   const email = session.user.email ?? undefined;
 
   const { searchParams } = new URL(request.url);
+  // #region agent log
+  fetch('http://127.0.0.1:7612/ingest/8aea60fb-361d-42a0-a3fc-40b103521aac', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '9078ec' },
+    body: JSON.stringify({
+      sessionId: '9078ec',
+      runId: 'pre-fix',
+      hypothesisId: 'H1/H2/H3/H4',
+      location: 'app/api/records/route.ts:GET:start',
+      message: 'api/records called',
+      data: {
+        url: request.url,
+        email: session.user.email ?? null,
+        query: Object.fromEntries(searchParams.entries()),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   const farmParam = searchParams.get('farm');
   const farmCodes = farmParam
     ? farmParam.split(',').map((s) => s.trim()).filter(Boolean)

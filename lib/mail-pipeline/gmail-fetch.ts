@@ -25,6 +25,8 @@ function isRelevantEmail(from: string, subject: string, attNames: string[]): boo
     subLower.includes(kw.toLowerCase())
   );
   if (subjectMatch) return true;
+  // 제목만으로 농장코드가 오는 경우(예: [옵티팜] DB3023 - …) — 키워드 누락 시에도 수집
+  if (/d[ab]\d{4}/i.test(subject)) return true;
 
   if (
     subLower.includes('전달') ||
@@ -41,7 +43,7 @@ function isRelevantEmail(from: string, subject: string, attNames: string[]): boo
       (nm.includes('결과') ||
         nm.includes('검사') ||
         nm.includes('report') ||
-        /d[ab]\d{4}/.test(nm) ||
+        /d[ab]\d{4}/i.test(nm) ||
         nm.includes('의뢰'))
     );
   });

@@ -91,6 +91,7 @@ export async function fetchNaverLabelAttachments(options?: {
       const subjectMatch = MAIL_CONFIG.EMAIL_SUBJECT_KEYWORDS.some((kw) =>
         subLower.includes(kw.toLowerCase())
       );
+      const subjectFarmCode = /d[ab]\d{4}/i.test(subject);
       const hasRelevantPdf = attNames.some((n) => {
         const nm = n.toLowerCase();
         return (
@@ -98,11 +99,11 @@ export async function fetchNaverLabelAttachments(options?: {
           (nm.includes('결과') ||
             nm.includes('검사') ||
             nm.includes('report') ||
-            /d[ab]\d{4}/.test(nm) ||
+            /d[ab]\d{4}/i.test(nm) ||
             nm.includes('의뢰'))
         );
       });
-      if (!senderMatch && !subjectMatch && !hasRelevantPdf) continue;
+      if (!senderMatch && !subjectMatch && !subjectFarmCode && !hasRelevantPdf) continue;
     }
 
     for (const part of attParts) {

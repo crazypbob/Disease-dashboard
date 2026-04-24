@@ -32,7 +32,7 @@ export function DashboardPageClient({ farm, isAdmin, restrictAudienceSwitcher }:
     .map(([c]) => c);
 
   return (
-    <div className="flex flex-1">
+    <div className="flex min-h-0 flex-1">
       {(viewMode === 'matrix' || viewMode === 'summary' || viewMode === 'titer') && showMatrixFarmSidebar && (
         <aside className="w-56 shrink-0 border-r border-zinc-200">
           <FarmSidebar
@@ -70,7 +70,7 @@ export function DashboardPageClient({ farm, isAdmin, restrictAudienceSwitcher }:
           />
         </aside>
       )}
-      <main className="flex-1 overflow-auto p-4">
+      <main className="min-h-0 flex-1 overflow-auto p-4">
         <DashboardContent
           farm={farm}
           isAdmin={isAdmin}

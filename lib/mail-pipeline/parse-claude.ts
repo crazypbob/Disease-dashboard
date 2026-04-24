@@ -72,6 +72,7 @@ export async function parsePdfWithClaude(
 "tests":[{"disease":"PRRS/PED/SIV/PCV/CSF/FMD/APP/세균(마이코플라즈마)","testType":"항원 또는 항체","method":"시료종류 등","overallResult":"+ 또는 - 또는 ?","details":"S/P 등"}]}
 
 판정: 양성/검출=+, 음성/불검출=-, 불명확=? | Mycoplasma hyorhinis→disease:"세균" | SIV(인플루엔자)→disease:"SIV"
+| Clostridium(difficile·perfringens·novyi/noyvi 등)·클로스트리디움→disease:"세균", 배양/분리면 testType에 반영(PRRS 유전자로 넣지 말 것)
 
 농장코드: ${farmContext}
 (대덕종돈=DB1002, 성진종돈=DB1001, 다비연구소=DB9001 등)
@@ -115,10 +116,23 @@ JSON만 출력하세요.`;
 
   for (const test of parsed.tests) {
     if (!test.overallResult) continue;
-    const disease = normalizeDisease(test.disease || 'PRRS');
+    const rawD = test.disease || 'PRRS';
     const methodLower = (test.method || '').toLowerCase();
-    const isGenomic = methodLower.includes('염기서열') || methodLower.includes('유전자');
-    const testType = isGenomic ? '유전자분석' : (test.testType || '항원').includes('항체') ? 'ELISA' : 'PCR';
+    const detailsLower = (test.details || '').toLowerCase();
+    const blob = `${methodLower} ${detailsLower} ${String(rawD).toLowerCase()}`;
+    const isClostridium =
+      /clostridium|클로스트리디|클로스트리듐|difficile|perfringens|\bnovyi\b|\bnoyvi\b/i.test(blob);
+    let disease = normalizeDisease(rawD);
+    if (isClostridium) disease = '세균';
+    const isGenomic =
+      !isClostridium && (methodLower.includes('염기서열') || methodLower.includes('유전자'));
+    const testType = isClostridium
+      ? '세균배양'
+      : isGenomic
+        ? '유전자분석'
+        : (test.testType || '항원').includes('항체')
+          ? 'ELISA'
+          : 'PCR';
     records.push({
       date: dateStr,
       farm_code: farmCode || 'DB9001',
@@ -135,6 +149,7 @@ JSON만 출력하세요.`;
 
 function normalizeDisease(d: string): string {
   const u = d.toUpperCase();
+  if (/CLOSTRIDIUM|DIFFICILE|PERFRINGENS|NOVYI|NOYVI|클로스트리디|클로스트리듐/.test(u)) return '세균';
   if (u.includes('SIV') || u.includes('인플루엔자') || u.includes('IAV')) return 'SIV';
   if (u.includes('PED')) return 'PED';
   if (u.includes('PRRS')) return 'PRRS';

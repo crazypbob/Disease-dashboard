@@ -93,7 +93,10 @@ function ResultGlyph({
   if (!record) {
     return <span className={compact ? 'text-sm text-zinc-300' : 'text-lg text-zinc-300'}>—</span>;
   }
-  const { symbol, variant } = parseTestResult(record.result);
+  const { symbol, variant } = parseTestResult(record.result, {
+    disease: record.disease,
+    testType: record.test_type,
+  });
   const url = noLink ? null : pdfViewUrl(record.id, record.pdf_file_id);
   const cls =
     variant === 'positive'
@@ -385,7 +388,11 @@ export function RecordsMatrix({
     if (!positiveOnly) return farmRowsByGroupRaw;
     const positiveFarmCodes = new Set(
       records
-        .filter((r) => parseTestResult(r.result).variant === 'positive')
+        .filter(
+          (r) =>
+            parseTestResult(r.result, { disease: r.disease, testType: r.test_type }).variant ===
+            'positive'
+        )
         .map((r) => r.farm_code)
     );
     return farmRowsByGroupRaw
@@ -544,7 +551,10 @@ export function RecordsMatrix({
           periodLabel: pl,
           disease: 'PRRS',
           assayLabel: 'Ag (PCR)',
-          result: parseTestResult(pair.ag.result).symbol,
+          result: parseTestResult(pair.ag.result, {
+            disease: pair.ag.disease,
+            testType: pair.ag.test_type,
+          }).symbol,
           recordId: pair.ag.id,
           pdfFileId: pair.ag.pdf_file_id,
         } satisfies MatrixVerifyPick);
@@ -556,7 +566,10 @@ export function RecordsMatrix({
           periodLabel: pl,
           disease: 'PRRS',
           assayLabel: 'Ab (ELISA)',
-          result: parseTestResult(pair.ab.result).symbol,
+          result: parseTestResult(pair.ab.result, {
+            disease: pair.ab.disease,
+            testType: pair.ab.test_type,
+          }).symbol,
           recordId: pair.ab.id,
           pdfFileId: pair.ab.pdf_file_id,
         } satisfies MatrixVerifyPick);
@@ -628,7 +641,7 @@ export function RecordsMatrix({
           periodLabel: pl,
           disease: col.disease,
           assayLabel: 'Ag (PCR)',
-          result: parseTestResult(ag.result).symbol,
+          result: parseTestResult(ag.result, { disease: ag.disease, testType: ag.test_type }).symbol,
           recordId: ag.id,
           pdfFileId: ag.pdf_file_id,
         } satisfies MatrixVerifyPick);
@@ -640,7 +653,7 @@ export function RecordsMatrix({
           periodLabel: pl,
           disease: col.disease,
           assayLabel: 'Ab (ELISA)',
-          result: parseTestResult(ab.result).symbol,
+          result: parseTestResult(ab.result, { disease: ab.disease, testType: ab.test_type }).symbol,
           recordId: ab.id,
           pdfFileId: ab.pdf_file_id,
         } satisfies MatrixVerifyPick);
@@ -698,7 +711,10 @@ export function RecordsMatrix({
       );
     }
     const url = cell.pdf_file_id ? pdfViewUrl(cell.id, cell.pdf_file_id) : null;
-    const { symbol, variant } = parseTestResult(cell.result ?? null);
+    const { symbol, variant } = parseTestResult(cell.result ?? null, {
+      disease: cell.disease,
+      testType: cell.test_type,
+    });
 
     const inner = (
       <span
@@ -1065,7 +1081,7 @@ export function RecordsMatrix({
               </span>
             )}
           </p>
-          <div className="h-[calc(100vh-260px)] overflow-auto rounded border border-zinc-200">
+          <div className="min-w-0 overflow-x-auto rounded border border-zinc-200">
             <table className="min-w-max border-collapse text-xs">
               <thead className="sticky top-0 z-20 bg-zinc-50 shadow-sm">
                 <tr>

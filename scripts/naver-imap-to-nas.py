@@ -7,6 +7,7 @@
   export NAVER_APP_PASSWORD="xxxx xxxx xxxx xxxx"
   export SAVE_PATH="/volume1/질병검사결과/메일저장"
   python3 naver-imap-to-nas.py
+  python3 naver-imap-to-nas.py --verbose-skip   # TARGET_SENDER 스킵 시 stderr에 사유
 
 또는 .env 파일 (프로젝트 루트 scripts/ 에 둘 경우):
   NAVER_EMAIL=...
@@ -179,6 +180,11 @@ def main():
     parser.add_argument("--all", action="store_true", help="UNSEEN 대신 ALL(읽음/안읽음 무관)로 처리")
     parser.add_argument("--since", type=str, default="", help="YYYY-MM-DD (포함) 이후만")
     parser.add_argument("--before", type=str, default="", help="YYYY-MM-DD (미포함) 이전만")
+    parser.add_argument(
+        "--verbose-skip",
+        action="store_true",
+        help="TARGET_SENDER에 걸려 스킵된 메일을 stderr에 한 줄씩 출력",
+    )
     args = parser.parse_args()
 
     run_id = "pre-fix"
@@ -202,6 +208,17 @@ def main():
         print("NAVER_EMAIL, NAVER_APP_PASSWORD 환경변수를 설정하세요.", file=sys.stderr)
         sys.exit(1)
 
+    abs_save = os.path.abspath(SAVE_PATH)
+    print(f"[naver-imap] SAVE_PATH (절대경로): {abs_save}")
+    print(
+        "[naver-imap] 저장 규칙: SAVE_PATH/<메일 Date의 YYYY-MM>/"
+        "<YYYYMMDD>_<제목앞40자>_<발신앞30자>_<원본첨부파일명>.pdf"
+    )
+    print(
+        "[naver-imap] 참고: Synology/클라이언트의 '위생도평가/26/상반기' 같은 경로는 "
+        "이 스크립트가 만들지 않습니다. OCR은 nas-auto-pipeline이 SAVE_PATH 전체를 os.walk 합니다."
+    )
+
     try:
         mail = imaplib.IMAP4_SSL("imap.naver.com", 993)
         mail.login(EMAIL, PASSWORD)
@@ -215,6 +232,11 @@ def main():
     before_ymd = args.before.strip() or None
     unseen_only = not args.all
     criteria = _build_search_criteria(unseen_only, since_ymd, before_ymd)
+    print(
+        f"[naver-imap] IMAP 검색: {criteria} | UNSEEN_only={unseen_only} | MARK_READ={MARK_READ}"
+    )
+    if TARGET_SENDER:
+        print(f"[naver-imap] TARGET_SENDER 필터 활성: {TARGET_SENDER!r} (발신 주소에 부분 문자열 포함 시만 저장)")
     status, messages = mail.search(None, criteria)
     if status != "OK":
         print("메일 검색 실패", file=sys.stderr)
@@ -222,6 +244,12 @@ def main():
         sys.exit(1)
 
     nums = messages[0].split()
+    if not nums:
+        print(
+            "[naver-imap] 검색 결과 메일 0건. "
+            "UNSEEN이면 이미 읽음 처리된 메일은 제외됩니다 → python scripts/naver-imap-to-nas.py --all "
+            "또는 --since=YYYY-MM-DD 로 재시도."
+        )
     saved_count = 0
     target_lower = TARGET_SENDER.lower() if TARGET_SENDER else ""
 
@@ -237,6 +265,12 @@ def main():
                 from_val = msg.get("From") or ""
                 from_addr = str(from_val) if from_val else ""
                 if target_lower not in from_addr.lower():
+                    if args.verbose_skip:
+                        subj_head = decode_mime_header(str(msg.get("Subject") or ""))[:100]
+                        print(
+                            f"[스킵] TARGET_SENDER 불일치 From={from_addr[:120]!r} Subject={subj_head!r}",
+                            file=sys.stderr,
+                        )
                     continue
 
             date_header = msg.get("Date") or ""
@@ -311,7 +345,7 @@ def main():
                                 f.write(payload)
                             saved_count += 1
                             has_attachment = True
-                            print(f"저장: {filepath}")
+                            print(f"저장: {os.path.abspath(filepath)}")
                     except Exception as e:
                         print(f"저장 실패 {filepath}: {e}", file=sys.stderr)
 
@@ -322,7 +356,7 @@ def main():
                     with open(eml_path, "wb") as f:
                         f.write(raw)
                     saved_count += 1
-                    print(f"저장(eml): {eml_path}")
+                    print(f"저장(eml): {os.path.abspath(eml_path)}")
                 except Exception as e:
                     print(f"eml 저장 실패: {e}", file=sys.stderr)
 

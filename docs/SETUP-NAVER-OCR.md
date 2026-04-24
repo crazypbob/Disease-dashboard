@@ -26,6 +26,23 @@
 | `DASHBOARD_DIR` | disease-dashboard 프로젝트 경로 |
 | `TARGET_SENDER` | 발신자 필터 (쉼표 구분, 비우면 전체) |
 
+### 2.0 `naver-imap-to-nas.py`가 만드는 경로 (Z: 혼동 방지)
+
+이 스크립트는 첨부를 **`SAVE_PATH/<메일 Date 헤더의 YYYY-MM>/`** 아래에만 씁니다. 파일명은 대략 다음 형태입니다.
+
+`{YYYYMMDD}_{제목앞40자}_{발신앞30자}_{원본첨부파일명}.pdf`
+
+- **`Z:\home\...\위생도평가\26\상반기\(혈청) 26-04129 DB3023.pdf`** 처럼, 메일 제목과 무관한 깊은 폴더 구조는 **이 스크립트가 생성하지 않습니다.** (다른 동기화 클라이언트·수동 정리·타 시스템 경로일 수 있음.)
+- **OCR·`nas-auto-pipeline.py`** 는 `SAVE_PATH` 루트에서 `os.walk`로 **모든 하위 폴더**의 PDF를 볼 수 있습니다. 따라서 `SAVE_PATH`가 `Z:\home\다비육종\농장`이고 그 아래에 `위생도평가\26\상반기\*.pdf`가 있으면 파이프라인은 해당 파일을 후보로 잡을 수 있습니다. 반대로 **`SAVE_PATH`와 Z: 트리가 완전히 분리**되어 있으면 OCR은 그 PDF를 보지 못합니다.
+
+**저장 여부 확인:** 프로젝트 루트에서 (`.env.local`의 `SAVE_PATH` 사용)
+
+```powershell
+python scripts/find-pdfs-under-savepath.py --contains 26-04129 --contains DB3023
+```
+
+**메일이 안 내려올 때:** 기본 검색은 `UNSEEN`이라 이미 읽음 처리된 메일은 제외됩니다. `python scripts/naver-imap-to-nas.py --all` 또는 `--since=2026-04-21` 로 재시도. `TARGET_SENDER`가 설정돼 있으면 발신 주소에 그 문자열이 **포함**될 때만 저장합니다. 스킵 이유를 보려면 `--verbose-skip` 을 붙입니다.
+
 ---
 
 ## 2.1 PC/NAS 환경 분리 (중요)
@@ -44,6 +61,7 @@ PC 여러 대를 오가고, OCR Docker는 NAS에서 실행되는 구조라면 **
 | 스크립트 | 용도 |
 |----------|------|
 | `naver-imap-to-nas.py` | 네이버 IMAP 첨부 → SAVE_PATH 저장 |
+| `find-pdfs-under-savepath.py` | `SAVE_PATH` 이하 PDF 파일명 토큰 검색 (접수번호·DB코드 등) |
 | `naver-vetdxlab-download.py` | 전북대 vetdxlab 링크 PDF 다운로드 |
 | `naver-nas-compare-download.py` | 네이버 vs NAS 비교, 누락분만 |
 | `naver-watch.py` | 1~2분마다 IMAP 자동 실행 (루프) |

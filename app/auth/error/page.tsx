@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { SignOutLinkButton } from '@/components/SignOutLinkButton';
 
 function AuthErrorContent() {
   const searchParams = useSearchParams();
@@ -45,12 +46,20 @@ function AuthErrorContent() {
           로 정확히 등록되어 있는지 확인하세요. (포트가 다르면 그에 맞게 등록)
         </p>
       )}
-      <Link
-        href="/"
-        className="rounded-md bg-black px-4 py-2 text-white hover:bg-zinc-800"
-      >
-        로그인 페이지로
-      </Link>
+      <div className="flex flex-col items-center gap-3 sm:flex-row">
+        <Link
+          href="/"
+          className="rounded-md bg-black px-4 py-2 text-white hover:bg-zinc-800"
+        >
+          로그인 페이지로
+        </Link>
+        <SignOutLinkButton
+          callbackUrl="/"
+          className="text-sm text-blue-600 underline-offset-2 hover:underline"
+        >
+          로그아웃(세션 끊기) 후 다시 시도
+        </SignOutLinkButton>
+      </div>
     </div>
   );
 }

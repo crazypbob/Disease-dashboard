@@ -14,6 +14,10 @@ import {
   getAccessRequestById,
 } from '@/lib/user-access-db';
 import { isOwnerEmail } from '@/lib/dashboard-role';
+import {
+  grantReaderOnPdfLibraryFolder,
+  revokeReaderOnPdfLibraryFolder,
+} from '@/lib/drive-share-approved';
 
 export type SubmitAccessRequestState = { ok?: boolean; error?: string };
 
@@ -81,7 +85,7 @@ export async function listAccessRequestsForAdminAction(
 export async function resolveAccessRequestAdminAction(input: {
   id: number;
   action: 'approve' | 'reject';
-}): Promise<{ ok?: boolean; email?: string; error?: string }> {
+}): Promise<{ ok?: boolean; email?: string; error?: string; driveShareWarning?: string }> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email || !canManageAccessRequests(session.user.email)) {
     return { error: 'Forbidden' };
@@ -97,6 +101,16 @@ export async function resolveAccessRequestAdminAction(input: {
     if (!result) {
       return { error: '대기 요청을 찾을 수 없습니다.' };
     }
+    if (input.action === 'approve') {
+      const share = await grantReaderOnPdfLibraryFolder(result.email);
+      if (!share.ok) {
+        return {
+          ok: true,
+          email: result.email,
+          driveShareWarning: `로그인 승인은 완료되었으나 Drive 뷰어 공유에 실패했습니다: ${share.message}`,
+        };
+      }
+    }
     return { ok: true, email: result.email };
   } catch (e) {
     console.error('[resolveAccessRequestAdminAction]', e);
@@ -106,7 +120,7 @@ export async function resolveAccessRequestAdminAction(input: {
 
 export async function revokeAccessApprovalAdminAction(input: {
   requestId: number;
-}): Promise<{ ok?: boolean; email?: string; error?: string }> {
+}): Promise<{ ok?: boolean; email?: string; error?: string; driveShareWarning?: string }> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email || !canManageAccessRequests(session.user.email)) {
     return { error: 'Forbidden' };
@@ -126,6 +140,14 @@ export async function revokeAccessApprovalAdminAction(input: {
     });
     if (!result) {
       return { error: '요청을 찾을 수 없거나 이미 취소되었습니다.' };
+    }
+    const share = await revokeReaderOnPdfLibraryFolder(result.email);
+    if (!share.ok) {
+      return {
+        ok: true,
+        email: result.email,
+        driveShareWarning: `로그인 승인은 취소되었으나 Drive 공유 회수에 실패했습니다: ${share.message}`,
+      };
     }
     return { ok: true, email: result.email };
   } catch (e) {

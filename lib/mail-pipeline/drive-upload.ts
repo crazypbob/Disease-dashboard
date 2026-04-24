@@ -37,6 +37,7 @@ async function getRootFolderId(
 
   const rootName = MAIL_CONFIG.ROOT_FOLDER_NAME;
   const listRes = await drive.files.list({
+    ...driveListOpts(),
     q: `name='${escDriveQueryName(rootName)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id)',
     spaces: 'drive',
@@ -45,6 +46,7 @@ async function getRootFolderId(
   let rootId = listRes.data.files?.[0]?.id;
   if (!rootId) {
     const createRoot = await drive.files.create({
+      ...driveCreateOpts(),
       requestBody: {
         name: rootName,
         mimeType: 'application/vnd.google-apps.folder',
@@ -56,17 +58,31 @@ async function getRootFolderId(
   return rootId;
 }
 
-async function getOrCreateMonthFolderId(
-  drive: ReturnType<typeof google.drive>,
-  monthFolder: string
-): Promise<string> {
-  const key = monthFolder;
-  if (folderCache.has(key)) return folderCache.get(key)!;
+function useSharedDriveOpts(): boolean {
+  const v = process.env.DRIVE_USE_SHARED_DRIVES?.trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
 
+function driveListOpts(): { supportsAllDrives?: boolean; includeItemsFromAllDrives?: boolean } {
+  if (!useSharedDriveOpts()) return {};
+  return { supportsAllDrives: true, includeItemsFromAllDrives: true };
+}
+
+function driveCreateOpts(): { supportsAllDrives?: boolean } {
+  if (!useSharedDriveOpts()) return {};
+  return { supportsAllDrives: true };
+}
+
+/** `질병메일링_대시보드` / `검사결과_PDF` — 월 폴더의 부모 (공유·업로드 공통) */
+export async function getOrCreatePdfLibraryFolderId(
+  drive: ReturnType<typeof google.drive>
+): Promise<string> {
   const pdfName = MAIL_CONFIG.PDF_FOLDER_NAME;
   const rootId = await getRootFolderId(drive);
 
+  const listOpts = driveListOpts();
   const pdfRes = await drive.files.list({
+    ...listOpts,
     q: `name='${escDriveQueryName(pdfName)}' and '${rootId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id)',
     spaces: 'drive',
@@ -74,7 +90,9 @@ async function getOrCreateMonthFolderId(
 
   let pdfId = pdfRes.data.files?.[0]?.id;
   if (!pdfId) {
+    const createOpts = driveCreateOpts();
     const createPdf = await drive.files.create({
+      ...createOpts,
       requestBody: {
         name: pdfName,
         mimeType: 'application/vnd.google-apps.folder',
@@ -84,8 +102,20 @@ async function getOrCreateMonthFolderId(
     });
     pdfId = createPdf.data.id!;
   }
+  return pdfId;
+}
+
+async function getOrCreateMonthFolderId(
+  drive: ReturnType<typeof google.drive>,
+  monthFolder: string
+): Promise<string> {
+  const key = monthFolder;
+  if (folderCache.has(key)) return folderCache.get(key)!;
+
+  const pdfId = await getOrCreatePdfLibraryFolderId(drive);
 
   const monthRes = await drive.files.list({
+    ...driveListOpts(),
     q: `name='${escDriveQueryName(monthFolder)}' and '${pdfId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id)',
     spaces: 'drive',
@@ -94,6 +124,7 @@ async function getOrCreateMonthFolderId(
   let monthId = monthRes.data.files?.[0]?.id;
   if (!monthId) {
     const createMonth = await drive.files.create({
+      ...driveCreateOpts(),
       requestBody: {
         name: monthFolder,
         mimeType: 'application/vnd.google-apps.folder',
@@ -125,6 +156,7 @@ export async function uploadPdfToDrive(
   const folderId = await getOrCreateMonthFolderId(drive, monthFolder);
 
   const file = await drive.files.create({
+    ...driveCreateOpts(),
     requestBody: {
       name: filename,
       parents: [folderId],

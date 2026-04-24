@@ -81,7 +81,9 @@ export async function POST(request: Request) {
       try {
         const farms = [...new Set(records.map((r) => r.farm_code))].join(', ');
         const positives = records.filter(
-          (r) => parseTestResult(r.result).variant === 'positive'
+          (r) =>
+            parseTestResult(r.result, { disease: r.disease, testType: r.test_type }).variant ===
+            'positive'
         ).length;
         const summary =
           positives > 0

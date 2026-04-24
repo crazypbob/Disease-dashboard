@@ -33,7 +33,7 @@ function toCSV(rows: RecordRow[], farmName: (c: string) => string, baseUrl = '')
           ? `${baseUrl.replace(/\/$/, '')}${rel}`
           : rel
       : null;
-    const { symbol } = parseTestResult(r.result);
+    const { symbol } = parseTestResult(r.result, { disease: r.disease, testType: r.test_type });
     return [
       r.date,
       farmName(r.farm_code),
@@ -168,7 +168,10 @@ export function RecordsListView({ farm, customerOnly = false }: RecordsListViewP
           <tbody>
             {sorted.map((r) => {
               const url = pdfViewUrl(r.id, r.pdf_file_id);
-              const { symbol, variant } = parseTestResult(r.result);
+              const { symbol, variant } = parseTestResult(r.result, {
+                disease: r.disease,
+                testType: r.test_type,
+              });
               const resultCls =
                 variant === 'positive'
                   ? 'font-bold text-red-600'

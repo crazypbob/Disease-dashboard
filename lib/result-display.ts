@@ -3,7 +3,24 @@
  */
 export type ResultVariant = 'positive' | 'negative' | 'equivocal' | 'reported' | 'empty' | 'unknown';
 
-export function parseTestResult(result: string | null | undefined): {
+/** 세균 배양·PCR 등: DB에 'V'(보고/검출 형태)로 들어와도 매트릭스는 + 로 표시 */
+export type ParseTestResultContext = {
+  disease?: string | null;
+  testType?: string | null;
+};
+
+function isBacteriaCultureStyle(ctx?: ParseTestResultContext): boolean {
+  const d = String(ctx?.disease ?? '').trim();
+  const t = String(ctx?.testType ?? '').trim();
+  if (d !== '세균') return false;
+  if (t.includes('감수성') || t.includes('내성') || t.includes('항생제')) return false;
+  return true;
+}
+
+export function parseTestResult(
+  result: string | null | undefined,
+  ctx?: ParseTestResultContext
+): {
   symbol: string;
   variant: ResultVariant;
 } {
@@ -59,6 +76,9 @@ export function parseTestResult(result: string | null | undefined): {
   if (equivocal) return { symbol: '?', variant: 'equivocal' };
   if (positive) return { symbol: '+', variant: 'positive' };
   if (negative || parenNeg || spDoubleMinus) return { symbol: '-', variant: 'negative' };
+  if (isBacteriaCultureStyle(ctx) && (raw === 'V' || r === 'v')) {
+    return { symbol: '+', variant: 'positive' };
+  }
   if (reported) return { symbol: 'V', variant: 'reported' };
 
   return { symbol: raw, variant: 'unknown' };

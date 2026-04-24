@@ -33,7 +33,10 @@ export function buildSidoMonthDiseaseAggregates(
     if (!row.has(ck)) row.set(ck, { tests: 0, positives: 0 });
     const cell = row.get(ck)!;
     cell.tests += 1;
-    if (parseTestResult(r.result).variant === 'positive') cell.positives += 1;
+    if (
+      parseTestResult(r.result, { disease: r.disease, testType: r.test_type }).variant === 'positive'
+    )
+      cell.positives += 1;
   }
 
   const columnKeys = [...colSet].sort((a, b) => {

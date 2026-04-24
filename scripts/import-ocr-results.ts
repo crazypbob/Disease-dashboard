@@ -18,6 +18,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
+import { rowTextSuggestsClostridium } from '../lib/clostridium-ocr-context';
 
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
@@ -242,8 +243,22 @@ function parseSingleColumnRow(text: string): ParsedSingleRow | null {
     { regex: /PRRS\s*(?:Ab|항체|혈청)[:：]?\s*(양성|음성|검출|불검출|\+|\-)/gi, disease: 'PRRS', testType: 'ELISA' },
     { regex: /PCV2\s*항체[:：]?\s*(양성|음성|검출|불검출|\+|\-)/gi, disease: 'PCV2', testType: 'ELISA' },
     { regex: /APP\s*항체[:：]?\s*(양성|음성|검출|불검출|\+|\-)/gi, disease: 'APP', testType: 'ELISA' },
-    // Clostridium novyi 등 세균성 항목(서후 2026-01-26 케이스 대응)
-    { regex: /Clostridium\s*(?:novyi|noyvi)[^+\-?]*(양성|음성|검출|불검출|\+|\-)/gi, disease: '세균', testType: '세균배양' },
+    // Clostridium 계열(노비이·디프리실·퍼프링겐스 등) — 추출/분석결과 PRRS 오탈자 방지와 동일 목록
+    {
+      regex: /Clostridium\s*(?:novyi|noyvi)[^+\-?Vv]{0,120}?(양성|음성|검출|불검출|\+|\-|V|v)/gi,
+      disease: '세균',
+      testType: '세균배양',
+    },
+    {
+      regex: /Clostridium\s*(?:difficile|difficilis)[^+\-?Vv]{0,120}?(양성|음성|검출|불검출|\+|\-|V|v)/gi,
+      disease: '세균',
+      testType: '세균배양',
+    },
+    {
+      regex: /Clostridium\s*perfringens[^+\-?Vv]{0,160}?(양성|음성|검출|불검출|\+|\-|V|v)/gi,
+      disease: '세균',
+      testType: '세균배양',
+    },
     { regex: /Myco|마이코|세균[:：]?\s*(양성|음성|검출|불검출|\+|\-)/gi, disease: '세균', testType: 'ELISA' },
     { regex: /SIV|인플루엔자[:：]?\s*(양성|음성|검출|불검출|\+|\-)/gi, disease: 'SIV', testType: 'PCR' },
     { regex: /(?:\bMH\b|Mycoplasma\s*hyopneumoniae|M\.?\s*hyopneumoniae)\s*(?:PCR|항원)?[:：]?\s*(양성|음성|검출|불검출|\+|\-)/gi, disease: 'MH', testType: 'PCR' },
@@ -253,7 +268,7 @@ function parseSingleColumnRow(text: string): ParsedSingleRow | null {
   for (const { regex, disease, testType } of patterns) {
     const m = t.match(regex);
     if (m) {
-      const valMatch = m[0].match(/(양성|음성|검출|불검출|\+|\-)/i);
+      const valMatch = m[0].match(/(양성|음성|검출|불검출|\+|\-|V|v)/i);
       const val = valMatch ? valMatch[1] : m[0].trim();
       results.push({ disease, testType, result: toResult(val) });
     }
@@ -261,11 +276,12 @@ function parseSingleColumnRow(text: string): ParsedSingleRow | null {
 
   // "분석결과/추출결과"는 문서마다 의미가 달라서(항체가 검사인데도 분석결과로 표기되는 케이스 존재)
   // 문서 전체 문맥을 보고 testType을 추론한다.
-  const analysisResult = t.match(/(?:추출결과|분석결과)[:：]?\s*(양성|음성|검출|불검출|\+|\-)/i);
+  const analysisResult = t.match(/(?:추출결과|분석결과)[:：]?\s*(양성|음성|검출|불검출|\+|\-|V|v)/i);
   if (analysisResult) {
     const val = analysisResult[1];
-    const hasPrrs = /PRRS/i.test(t);
-    if (hasPrrs) {
+    if (rowTextSuggestsClostridium(t)) {
+      results.push({ disease: '세균', testType: '세균배양', result: toResult(val) });
+    } else if (/PRRS/i.test(t)) {
       const looksLikeAb = /항체|ELISA|S\s*\/\s*P/i.test(t);
       const looksLikePcr = /\bPCR\b|항원/i.test(t);
       const testType = looksLikeAb ? 'ELISA' : looksLikePcr ? 'PCR' : '유전자분석';
@@ -361,10 +377,10 @@ async function main() {
   const judgementSourceIdx = findColumn(headers, ['판정_출처', 'judgement_source']);
   const judgementFallbackIdx = findColumn(headers, ['판정_미해독', 'judgement_fallback']);
 
-  const diseaseColMap = new Map<string, { disease: string; testType: string }>();
+  const diseaseColMap = new Map<string, { disease: string; testType: string; sourceCol: string }>();
   for (const { col, disease, testType } of DISEASE_COLUMNS) {
     const idx = findColumn(headers, [col]);
-    if (idx >= 0) diseaseColMap.set(String(idx), { disease, testType });
+    if (idx >= 0) diseaseColMap.set(String(idx), { disease, testType, sourceCol: col });
   }
 
   const standardFormatOk = dateIdx >= 0 && farmNameIdx >= 0 && diseaseColMap.size > 0;
@@ -631,13 +647,27 @@ async function main() {
       }
     }
 
-    for (const [colIdx, { disease, testType }] of diseaseColMap) {
+    const rowBlob = headers.map((_, idx) => get(idx)).join(' ');
+
+    for (const [colIdx, { disease, testType, sourceCol }] of diseaseColMap) {
       const val = get(parseInt(colIdx, 10));
       if (!val) continue;
-      const fromSp = disease === 'PRRS' && testType === 'ELISA' ? resultFromPrrsElisaCell(val) : null;
+      let diseaseOut = disease;
+      let testTypeOut = testType;
+      if (
+        (sourceCol === '추출결과' || sourceCol === '분석결과') &&
+        disease === 'PRRS' &&
+        testType === '유전자분석' &&
+        rowTextSuggestsClostridium(`${rowBlob} ${val}`)
+      ) {
+        diseaseOut = '세균';
+        testTypeOut = '세균배양';
+      }
+      const fromSp =
+        diseaseOut === 'PRRS' && testTypeOut === 'ELISA' ? resultFromPrrsElisaCell(val) : null;
       const result = fromSp ?? toResult(val);
 
-      const key = `${date}_${farm}_${disease}_${testType}`;
+      const key = `${date}_${farm}_${diseaseOut}_${testTypeOut}`;
       if (seen.has(key)) {
         skipped++;
         continue;
@@ -645,12 +675,12 @@ async function main() {
       seen.add(key);
 
       if (dryRun) {
-        console.log(`  ${date} | ${farm} | ${disease} | ${testType} | ${result}`);
+        console.log(`  ${date} | ${farm} | ${diseaseOut} | ${testTypeOut} | ${result}`);
         inserted++;
         continue;
       }
 
-      const existingByPdf = await findExistingByPdfAndTest(farm, disease, testType, fileId);
+      const existingByPdf = await findExistingByPdfAndTest(farm, diseaseOut, testTypeOut, fileId);
       if (existingByPdf.length > 0) {
         if (replace) {
           try {
@@ -661,7 +691,7 @@ async function main() {
             await sql`UPDATE test_records SET result = ${result}, pdf_file_id = ${mergedPdf}, details = COALESCE(${details}, details) WHERE id = ${(existingByPdf[0] as ExistingRecord).id}`;
             updated++;
           } catch (e) {
-            console.warn(`행 ${i + 1} ${disease} 업데이트 오류:`, (e as Error).message);
+            console.warn(`행 ${i + 1} ${diseaseOut} 업데이트 오류:`, (e as Error).message);
             skipped++;
           }
         } else {
@@ -671,7 +701,7 @@ async function main() {
       }
 
       const existing = await sql`
-        SELECT id, pdf_file_id FROM test_records WHERE date = ${date} AND farm_code = ${farm} AND disease = ${disease} AND test_type = ${testType} LIMIT 1
+        SELECT id, pdf_file_id FROM test_records WHERE date = ${date} AND farm_code = ${farm} AND disease = ${diseaseOut} AND test_type = ${testTypeOut} LIMIT 1
       `;
       if (existing.length > 0) {
         if (replace) {
@@ -683,7 +713,7 @@ async function main() {
             await sql`UPDATE test_records SET result = ${result}, pdf_file_id = ${mergedPdf}, details = COALESCE(${details}, details) WHERE id = ${(existing[0] as { id: number }).id}`;
             updated++;
           } catch (e) {
-            console.warn(`행 ${i + 1} ${disease} 업데이트 오류:`, (e as Error).message);
+            console.warn(`행 ${i + 1} ${diseaseOut} 업데이트 오류:`, (e as Error).message);
             skipped++;
           }
         } else if (fileId && (!(existing[0] as { pdf_file_id: string }).pdf_file_id || (existing[0] as { pdf_file_id: string }).pdf_file_id.trim() === '')) {
@@ -702,11 +732,11 @@ async function main() {
       try {
         await sql`
           INSERT INTO test_records (date, farm_code, disease, test_type, result, pdf_file_id, method, details)
-          VALUES (${date}, ${farm}, ${disease}, ${testType}, ${result}, ${fileId}, null, ${details})
+          VALUES (${date}, ${farm}, ${diseaseOut}, ${testTypeOut}, ${result}, ${fileId}, null, ${details})
         `;
         inserted++;
       } catch (e) {
-        console.warn(`행 ${i + 1} ${disease} 오류:`, (e as Error).message);
+        console.warn(`행 ${i + 1} ${diseaseOut} 오류:`, (e as Error).message);
         skipped++;
       }
     }

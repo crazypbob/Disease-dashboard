@@ -14,6 +14,7 @@ export function AccessRequestsAdminClient() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [driveShareWarning, setDriveShareWarning] = useState<string | null>(null);
   const [revokeBusy, setRevokeBusy] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -35,11 +36,13 @@ export function AccessRequestsAdminClient() {
 
   async function act(id: number, action: 'approve' | 'reject') {
     setActionMsg(null);
+    setDriveShareWarning(null);
     const res = await resolveAccessRequestAdminAction({ id, action });
     if (res.error) {
       setErr(res.error);
       return;
     }
+    setDriveShareWarning(res.driveShareWarning ?? null);
     setActionMsg(action === 'approve' ? `${res.email} 승인됨` : '거절 처리됨');
     await load();
   }
@@ -54,6 +57,7 @@ export function AccessRequestsAdminClient() {
     }
     setErr(null);
     setActionMsg(null);
+    setDriveShareWarning(null);
     setRevokeBusy(id);
     try {
       const res = await revokeAccessApprovalAdminAction({ requestId: id });
@@ -61,6 +65,7 @@ export function AccessRequestsAdminClient() {
         setErr(res.error);
         return;
       }
+      setDriveShareWarning(res.driveShareWarning ?? null);
       setActionMsg(`${res.email ?? email}: 승인 취소됨 (다시 로그인 불가)`);
       await load();
     } finally {
@@ -100,6 +105,7 @@ export function AccessRequestsAdminClient() {
       {loading && <p className="text-sm text-zinc-500">불러오는 중…</p>}
       {err && <p className="text-sm text-red-700">{err}</p>}
       {actionMsg && <p className="text-sm text-green-700">{actionMsg}</p>}
+      {driveShareWarning && <p className="text-sm text-amber-800">{driveShareWarning}</p>}
       {!loading && rows.length === 0 && <p className="text-sm text-zinc-500">목록이 비어 있습니다.</p>}
       <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white">
         {rows.map((r) => (

@@ -21,7 +21,7 @@
 | `../개발일지.md` | 매일 진행상황(Why/Next) 기록 |
 | `../최신명령어.md` | 오늘 기준 유효 명령(운영/재처리)만 유지 |
 | `COMMANDS.md` | 입력 가능한 모든 명령어 모음 |
-| `CHANGELOG.md` | 드랍·변경 사항 요약(최상단에 지도 탭·좌표 빌드 등 최근 블록) |
+| `CHANGELOG.md` | 드랍·변경 사항 요약 |
 | `STATUS-SNAPSHOT.md` | 현재 진행상태 1페이지 요약(상세는 ROADMAP 참조) |
 | `WINDOWS-EXECUTIONPOLICY.md` | PowerShell npx 차단 우회 |
 
@@ -36,7 +36,7 @@
 | `PIPELINE.md` | NAS 파이프라인 흐름, 폴더 구조 |
 | `SETUP-NAVER-OCR.md` | 네이버 IMAP, OCR Docker, 자동 감시 |
 | `OCR-NAS-운영-정리.md` | OCR·전북대 표 파싱·watcher·DB·나스 단독 운영 요약 (2026-03-26) |
-| `OPS-AUTOMATION.md` | NAS 상시 운영 자동화 권장안(스케줄 등록 예: §5) |
+| `OPS-AUTOMATION.md` | NAS 상시 운영 자동화 권장안(스케줄 등록 예) |
 | `../SETUP.md` | 환경변수, DB 초기화, 로컬 실행 |
 
 ---
@@ -46,12 +46,14 @@
 | 파일 | 내용 |
 |------|------|
 | `TODO.md` | 현재 상태, 해야 할 것, 우선순위 |
-| `BACKLOG-ALIGNMENT.md` | 백로그·구성 합의(운영·지도·RBAC·다음 UI·특허 캡처) |
-| `TITER-TRACKING-SPEC.md` | 항체가 추세(농장당 xlsx·폴더·DB 정본·구현 단계) |
-| `REFERENCE.md` | 스크립트 목록, 농장매핑, AI 검증, 레거시(GAS/Drive) |
+| `BACKLOG-ALIGNMENT.md` | 백로그·구성 합의 |
+| `TITER-TRACKING-SPEC.md` | 항체가 추세 스펙 |
+| `REFERENCE.md` | 스크립트 목록, 농장매핑, AI 검증, 레거시 |
 | `IMPORT-RUNBOOK.md` | results.xlsx → DB 운영 표준 |
-| `DATA-VERIFY-RUNBOOK.md` | 관찰 항목(PDF 대조) 검증 루틴 |
-| `특허명세서_초안.md` | 출원용 명세(구현 표는 ROADMAP과 병행 갱신) |
+| `DATA-VERIFY-RUNBOOK.md` | PDF/DB 대조 검증 루틴 |
+| `RUNBOOK-DRIVE-REPARSING.md` | Drive 재파싱/재처리 런북 |
+| `OAUTH-REDIRECT-URIS.md` | OAuth redirect URI 참고 |
+| `특허명세서_초안.md` | 출원용 명세 |
 | `선행기술조사_보고서.md` | 선행기술 조사 |
 
 ---
@@ -63,3 +65,4 @@
 | `../README.md` | 프로젝트 소개 |
 | `../AGENTS.md` | 에이전트 규칙 |
 | `설치-다른PC.md` | 다른 PC에서 작업 시 설치할 프로그램·링크 |
+
