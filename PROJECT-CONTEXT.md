@@ -83,7 +83,8 @@ X:/
 | 항목 | 상태 |
 |------|------|
 | DB 스키마 (Neon) | ✅ farms, test_records, parsed_files |
-| NextAuth + Google 로그인 | ✅ ALLOWED_EMAILS 화이트리스트 |
+| 인증(NextAuth) | ✅ Google/Naver 로그인 + `SIGN_IN_POLICY=db_allowlist` 승인 게이트 |
+| 관리자 탭 | ✅ 가입 승인 / Drive 승인(재시도) / 디버그리포트 |
 | 대시보드 레이아웃 | ✅ 농장 사이드바, 등록/고객농장 탭 |
 | **농장 다중 선택** | ✅ 버튼식, 직영만 보기, URL ?farm=DB1001,DB1002 |
 | **매트릭스 그룹 +/-** | ✅ 직영·협력 등 펼치기/접기 |
@@ -183,6 +184,7 @@ X:/
 ## 10. 문서 인덱스
 
 - **`docs/00-DOCS-INDEX.md`** — 전체 문서 읽기 순서
+- **`docs/ADMIN-AUTH-DRIVE-NAVER.md`** — 운영 런북(관리자/로그인/승인/Drive/네이버)
 - **`docs/PIPELINE.md`** — 파이프라인 흐름
 - **`docs/COMMANDS.md`** — 명령어 전체
 - **`docs/SETUP-NAVER-OCR.md`** — 네이버 IMAP·OCR Docker 설정
@@ -193,4 +195,4 @@ X:/
 
 ---
 
-*마지막 업데이트: 2026-04-10*
+*마지막 업데이트: 2026-04-24*

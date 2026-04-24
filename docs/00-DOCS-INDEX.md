@@ -33,6 +33,7 @@
 |------|------|
 | `DEPLOYMENT-HOSTING.md` | **웹 호스팅 vs 운영 아키텍처**(채택안·대안·배포 체크리스트) |
 | `SECURITY-REPO-ACCESS.md` | Git Private·Vercel 접근·시크릿 비공개 체크리스트 |
+| `ADMIN-AUTH-DRIVE-NAVER.md` | **운영 런북(관리자/로그인/승인/Drive/네이버)** |
 | `PIPELINE.md` | NAS 파이프라인 흐름, 폴더 구조 |
 | `SETUP-NAVER-OCR.md` | 네이버 IMAP, OCR Docker, `verify-imap-saves-for-day`(수동·추후 스케줄) |
 | `OCR-NAS-운영-정리.md` | 2026-03-26 **스냅샷**(상세·갱신은 `PIPELINE`·`SETUP-NAVER-OCR` 우선) |

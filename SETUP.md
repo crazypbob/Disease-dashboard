@@ -1,6 +1,6 @@
 # 질병메일링 대시보드 — 설정 가이드
 
-> X: 드라이브 이전 시 `OCR_INPUT_PATH`, `NAVER_*` 등 추가 → `docs/X-DRIVE-MIGRATION.md`
+> 운영(로그인/승인/Drive/네이버) 런북은 `docs/ADMIN-AUTH-DRIVE-NAVER.md`를 우선 참고하세요.
 
 ## 1. 환경 변수 설정
 
@@ -12,12 +12,18 @@ DATABASE_URL=postgresql://...
 
 # NextAuth
 AUTH_SECRET=랜덤문자열
-NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_URL=http://localhost:3005
 ALLOWED_EMAILS=crazypbob@gmail.com
+SIGN_IN_POLICY=db_allowlist
+OWNER_EMAILS=crazypbob@gmail.com
 
 # Google OAuth (https://console.cloud.google.com → API 및 서비스 → 사용자 인증 정보)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+
+# (선택) Naver OAuth
+NAVER_CLIENT_ID=
+NAVER_CLIENT_SECRET=
 
 # GAS → Ingest API (GAS 사용 시)
 INGEST_SECRET=랜덤문자열
@@ -27,6 +33,11 @@ GMAIL_CLIENT_ID=
 GMAIL_CLIENT_SECRET=
 GMAIL_REFRESH_TOKEN=          # /setup/gmail에서 1회 연결 후 발급
 CRON_SECRET=                  # /api/cron/check-gmail 인증
+
+# (권장) 가입 승인 시 Drive 폴더 자동 공유
+DRIVE_AUTO_SHARE_ON_APPROVE=1
+DRIVE_SHARE_FOLDER_ID=        # 검사결과_PDF 폴더ID(권장)
+DRIVE_USE_SHARED_DRIVES=1     # Shared Drive면 1
 
 # PDF 파싱: NAS TeraCast OCR 사용
 
@@ -46,7 +57,7 @@ openssl rand -base64 32
 2. 프로젝트 생성 또는 선택
 3. API 및 서비스 → 사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID
 4. 애플리케이션 유형: 웹 애플리케이션
-5. 승인된 리디렉션 URI: `http://localhost:3000/api/auth/callback/google`
+5. 승인된 리디렉션 URI: `http://localhost:3005/api/auth/callback/google`
 
 ---
 
@@ -68,13 +79,7 @@ PowerShell에서 `npm.ps1` 실행이 막히면(`ExecutionPolicy`): **`npm.cmd ru
 
 `Error: listen EADDRINUSE ... port 3005` 이면 **이미 3005를 쓰는 프로세스**(다른 터미널의 `next dev` 등)가 있음. `netstat -ano | findstr :3005`로 PID 확인 후 종료하거나, **`npm.cmd run dev:3006`** 으로 http://localhost:3006 에서 띄움.
 
-http://localhost:3005 접속 후 Google 로그인 → 대시보드 확인
-
-## 4. Google Drive 원본 결과지
-
-- 이 프로젝트 폴더가 Drive에 연동되어 있으면, GAS에서 파싱한 PDF 결과지를 Drive에 저장 후 `drive_file_id`로 전달하면 됩니다.
-- 매트릭스 셀 클릭 시 새 탭에서 원본 결과지가 열립니다.
-- **다른 사람도 볼 수 있게**: Drive에서 해당 파일/폴더 우클릭 → 공유 → "링크가 있는 모든 사용자" 또는 특정 이메일 추가.
+http://localhost:3005 접속 후 Google/Naver 로그인 → (승인 필요 시) `/access-request`에서 가입 신청 → 승인 후 대시보드 확인
 
 ## 5. GAS 파싱·ingest 형식 (돼지 전용)
 

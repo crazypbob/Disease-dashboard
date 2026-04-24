@@ -14,6 +14,8 @@
 - `OWNER_EMAILS` (선택) — 전체 UI·가입 승인 권한을 가진 소유자(쉼표 구분). `SIGN_IN_POLICY=db_allowlist`일 때 로그인 허용에 사용.
 - `SIGN_IN_POLICY` — 비우거나 `open`(기본): 기존처럼 `ALLOWED_EMAILS` 비어 있으면 전원 로그인 가능. `db_allowlist`: `OWNER_EMAILS`·`ALLOWED_EMAILS`·`approved_users` 테이블에 있는 이메일만 로그인.
 
+> 운영 전체 흐름(관리자/승인/Drive/네이버)은 `docs/ADMIN-AUTH-DRIVE-NAVER.md`에 통합되어 있습니다.
+
 ## 디버그 리포트·메일 (선택)
 
 매트릭스 **검증 모드**에서 「관리자에게 전송」 시 DB에 저장되며, 아래가 있으면 **Resend**로 관리자 메일함에도 사본을 보냅니다.

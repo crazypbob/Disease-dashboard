@@ -8,6 +8,8 @@
 
 **한줄**: `RecordsMatrix` **헤더/본문 이중 테이블** + **픽셀 `colgroup`·`table-fixed`** 로 세로선 정합, **날짜 블록마다 굵은 왼쪽 구분선**, 열 너비 **단일(`single`) 45px · PRRS 병합 75px · SIV·APP·MH(`ab_ag_merged`)는 `abAgMergedColumnHasBothSlotsInRecords()`로 Ag·Ab가 둘 다 있을 때만 75px·아니면 45px**, 병합 셀 Ag/Ab **간격(`gap-2`)** 확대. **IMAP**: `SETUP-NAVER-OCR` §2.0a에 일별 `verify-imap-saves-for-day.py`·**자동 실행 아님·추후 스케줄** 명시, `naver-imap-to-nas.py` 보강 등. **문서**: `00-DOCS-INDEX`·`OCR-NAS-운영-정리` 정본 포인터, `AGENTS.md` 매트릭스·PDF 갭 절차.
 
+**추가(운영 인증/승인)**: 구글/네이버 OAuth 로그인, 가입 신청/관리자 승인, 승인 전 대시보드/API 차단(승인 유도), 승인 시 Drive 폴더(reader) 자동 공유 및 “Drive 승인” 재시도 탭 추가. 운영 런북은 `docs/ADMIN-AUTH-DRIVE-NAVER.md`.
+
 | 구분 | 내용 |
 |------|------|
 | `components/RecordsMatrix.tsx` | 이중 `<table>`·동일 `colgroup`, `scrollbar-gutter:stable`, `cellEdge` 날짜 구분, `matrixDataColWidthPx` |

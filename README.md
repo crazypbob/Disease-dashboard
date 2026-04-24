@@ -19,6 +19,7 @@ Next.js 16.2, NextAuth v4, Neon PostgreSQL, Vercel
 ## 문서
 
 - **`00-READ-ME-FIRST.md`** — 작업 시 첫 읽기
+- **`docs/ADMIN-AUTH-DRIVE-NAVER.md`** — 운영 런북(관리자/로그인/승인/Drive/네이버)
 - **`docs/ROADMAP-PATENT-STATUS.md`** — 특허·로드맵·완료/미완 요약
 - **`docs/DEPLOYMENT-HOSTING.md`** — 웹 호스팅·Docker OCR 위치·배포 전 체크리스트
 - **`docs/00-DOCS-INDEX.md`** — 전체 문서 인덱스
