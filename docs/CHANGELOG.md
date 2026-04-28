@@ -4,6 +4,15 @@
 
 ---
 
+## 지도·검증모드 (2026-04-28)
+
+**한줄**: 지도 탭에 **주소/지도 클릭 기준점 반경 조회(500m·1·2·3·5km)** 를 추가하고, 기준점은 **드래그로 미세 조정** 가능. 반경 원에는 **라벨(500m/1km/2km…)을 지도 위에 항상 표시**(겹침 최소화). 매트릭스 **검증 모드**는 **빈칸/링크없음/오표기**를 타입으로 기록하고, **링크없음 후보 자동 수집·일괄 선택**과 **프리징 완화(체크박스 표시 토글, 병합 셀 pair-map 최적화)** 를 반영.
+
+| 구분 | 내용 |
+|------|------|
+| `components/FarmMapPanel.tsx` | 주소 검색 + 지도 클릭 기준점, 반경 동심원(500m/1/2/3/5km) + 우측 누적 목록, 기준점 드래그 조정, 원 라벨(항상 표시) |
+| `components/RecordsMatrix.tsx` | 검증 pick 타입(`missing_record/missing_link/mismatch`), 빈칸 선택, 링크없음 자동 강조/일괄 선택, 렉 완화(체크박스 표시 토글) |
+
 ## UI·매트릭스·메일 검증 (2026-04-24)
 
 **한줄**: `RecordsMatrix` **헤더/본문 이중 테이블** + **픽셀 `colgroup`·`table-fixed`** 로 세로선 정합, **날짜 블록마다 굵은 왼쪽 구분선**, 열 너비 **단일(`single`) 45px · PRRS 병합 75px · SIV·APP·MH(`ab_ag_merged`)는 `abAgMergedColumnHasBothSlotsInRecords()`로 Ag·Ab가 둘 다 있을 때만 75px·아니면 45px**, 병합 셀 Ag/Ab **간격(`gap-2`)** 확대. **IMAP**: `SETUP-NAVER-OCR` §2.0a에 일별 `verify-imap-saves-for-day.py`·**자동 실행 아님·추후 스케줄** 명시, `naver-imap-to-nas.py` 보강 등. **문서**: `00-DOCS-INDEX`·`OCR-NAS-운영-정리` 정본 포인터, `AGENTS.md` 매트릭스·PDF 갭 절차.
@@ -18,6 +27,10 @@
 | 스크립트 (선택 동반) | `verify-imap-saves-for-day.py`, `verify-savepath-mail-tokens.py`, Drive·PDF 링크 점검 스크립트 등 |
 
 ---
+
+## 운영 (2026-04-25 — IMAP 누락 원인/대응)
+
+**한줄**: “4/21 한빛청주(DB3023) 결과가 안 보임”은 DB import 문제가 아니라 **IMAP 다운로드가 기본 `UNSEEN`이라 읽음 메일 첨부가 저장되지 않는 누락**으로 확정. 운영 표준 복구는 `naver-imap-to-nas.py --all --since/--before`. 누락 감지를 쉽게 하기 위해 **IMAP 감사로그 + 디스크 스캔(옵션3) 일별 집계**를 웹에서 확인하는 방향으로 전환.
 
 ## 운영·파싱 (2026-04-11 — PRRS 항체·일령 미입력)
 

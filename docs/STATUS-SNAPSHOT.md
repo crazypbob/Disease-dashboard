@@ -22,7 +22,7 @@
 ## 최근에 반영된 것 (키워드만)
 
 - 매트릭스: `gov_central` 집계·익명 행, `gov_local`, `public_vet`, `vet_assigned`, `vet_union`, `MATRIX_*_EMAILS`  
-- 지도: ASF 가상 30점, 클릭 시 500m~10km 5색 원, 우측 거리 구간 코드 목록, 제주 bounds  
+- 지도: ASF 가상 30점, 클릭 시 500m~10km 5색 원, 우측 거리 구간 코드 목록, 제주 bounds, **주소/지도 클릭 기준점 반경 조회(500m·1·2·3·5km) + 원 라벨 표시**  
 - 문서: 본 ROADMAP 신설, 인덱스·TODO·특허 표 정리  
 
 (파이프라인·전북대 파서·ELISA 등 3월 이전 요약은 `CHANGELOG` 과거 블록 참고.)
