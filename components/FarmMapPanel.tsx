@@ -179,6 +179,26 @@ function MapClickProbe({
   return null;
 }
 
+/**
+ * Leaflet은 컨테이너 크기 변경(우측 패널 열림/닫힘, 레이아웃 변경) 시
+ * `invalidateSize()`를 호출하지 않으면 타일이 작은 영역에만 렌더되는 등 "깨짐"이 발생할 수 있다.
+ */
+function InvalidateMapSizeOnLayoutChange({ layoutKey }: { layoutKey: string }) {
+  const map = useMap();
+  useEffect(() => {
+    const t = window.setTimeout(() => map.invalidateSize(true), 60);
+    return () => window.clearTimeout(t);
+  }, [map, layoutKey]);
+  useEffect(() => {
+    const el = map.getContainer();
+    if (!el) return;
+    const ro = new ResizeObserver(() => map.invalidateSize(false));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [map]);
+  return null;
+}
+
 function NationalFarmCircleMarker({
   n,
   role,
@@ -908,6 +928,7 @@ export function FarmMapPanel({
   const asfSideOpen = asfInteractiveRole && selectedAsfSite != null;
   const probeSideOpen = probePoint != null;
   const mapRowSplit = govSideListOpen || asfSideOpen || probeSideOpen;
+  const mapLayoutKey = `${role}|split:${mapRowSplit ? 1 : 0}|asf:${asfSideOpen ? 1 : 0}|gov:${govSideListOpen ? 1 : 0}|probe:${probeSideOpen ? 1 : 0}`;
 
   return (
     <div className="flex flex-col gap-2">
@@ -938,11 +959,16 @@ export function FarmMapPanel({
               setProbeSearchNote(null);
               setProbeSearchResults([]);
               try {
-                // 간단 파서: "도로명 12-34" 또는 "... 123" 형태면 번지를 추출해 정확 매칭 여부를 표시한다.
+                // 도로명/지번 입력을 모두 허용.
+                // - 도로명 주소일 때만(로/길/대로 포함) 끝 숫자를 house_number로 간주해 exact 여부를 표기한다.
+                // - 지번 주소는 house_number가 다르게 표현되는 경우가 많아 exact 강제 비교를 하지 않는다.
+                const looksLikeRoad =
+                  /(?:로|길|대로)\b/.test(q) ||
+                  /\b(?:ro|gil|daero)\b/i.test(q);
                 const m = q.match(/^(.*?)(\d+(?:-\d+)?)\s*$/);
-                const maybeRoad = (m?.[1] ?? '').trim();
+                const maybePrefix = (m?.[1] ?? '').trim();
                 const maybeHouse = (m?.[2] ?? '').trim();
-                const expectHouse = maybeRoad && maybeHouse ? maybeHouse : null;
+                const expectHouse = looksLikeRoad && maybePrefix && maybeHouse ? maybeHouse : null;
 
                 const url = new URL('https://nominatim.openstreetmap.org/search');
                 url.searchParams.set('format', 'jsonv2');
@@ -984,6 +1010,10 @@ export function FarmMapPanel({
                 } else if (expectHouse && !hasExact) {
                   setProbeSearchNote(
                     `입력한 번지(${expectHouse})가 OpenStreetMap 데이터에 정확히 없을 수 있어요. 아래 결과는 ‘같은 도로 주변’ 근사 결과일 수 있습니다.`
+                  );
+                } else if (!looksLikeRoad) {
+                  setProbeSearchNote(
+                    '지번 주소는 OpenStreetMap 데이터 구조상 번지 정확 매칭이 어려울 수 있어요. 결과 목록에서 가장 맞는 지점을 선택해 주세요.'
                   );
                 }
               } catch (e) {
@@ -1322,6 +1352,7 @@ export function FarmMapPanel({
             maxBounds={KOREA_VIEW_BOUNDS}
             maxBoundsViscosity={0.85}
           >
+            <InvalidateMapSizeOnLayoutChange layoutKey={mapLayoutKey} />
             <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
