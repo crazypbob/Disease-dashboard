@@ -199,6 +199,134 @@ function InvalidateMapSizeOnLayoutChange({ layoutKey }: { layoutKey: string }) {
   return null;
 }
 
+function kmLabel(km: number): string {
+  if (Math.abs(km - 0.5) < 1e-9) return '500m';
+  if (km < 1) return `${Math.round(km * 1000)}m`;
+  return `${km}km`;
+}
+
+function offsetLatLngKm(
+  lat: number,
+  lng: number,
+  distKm: number,
+  bearingRad: number
+): { lat: number; lng: number } {
+  const R = 6371;
+  const d = distKm / R;
+  const lat1 = (lat * Math.PI) / 180;
+  const lng1 = (lng * Math.PI) / 180;
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(bearingRad)
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(bearingRad) * Math.sin(d) * Math.cos(lat1),
+      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+    );
+  return { lat: (lat2 * 180) / Math.PI, lng: (lng2 * 180) / Math.PI };
+}
+
+type Box = { x: number; y: number; w: number; h: number };
+function boxesOverlap(a: Box, b: Box): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function RingLabels({
+  center,
+  radiiKm,
+  layoutKey,
+  avoidRightPx = 0,
+}: {
+  center: { lat: number; lng: number };
+  radiiKm: number[];
+  layoutKey: string;
+  /** 우측 패널(사이드바) 폭만큼 오른쪽 영역을 피한다 */
+  avoidRightPx?: number;
+}) {
+  const map = useMap();
+  const [placed, setPlaced] = useState<Array<{ lat: number; lng: number; text: string }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const compute = () => {
+      const size = map.getSize();
+      if (!size?.x || !size?.y) return;
+
+      const candidatesDeg = [20, 60, 110, 160, 210, 260, 310, 350];
+      const taken: Box[] = [];
+      const out: Array<{ lat: number; lng: number; text: string }> = [];
+
+      // 큰 반경부터 배치하면(먼저 배치) 작은 원 라벨이 더 안쪽으로 들어와 겹침이 줄어드는 경향
+      const radii = [...radiiKm].sort((a, b) => b - a);
+      for (const km of radii) {
+        const text = kmLabel(km);
+        // 대략적인 라벨 박스 크기(픽셀) — 텍스트 길이에 따라 약간 가변
+        const w = 38 + Math.min(24, text.length * 6);
+        const h = 18;
+        const pad = 6;
+        let chosen: { lat: number; lng: number } | null = null;
+
+        for (const deg of candidatesDeg) {
+          const rad = (deg * Math.PI) / 180;
+          const p = offsetLatLngKm(center.lat, center.lng, km, rad);
+          const pt = map.latLngToContainerPoint([p.lat, p.lng]);
+          const box: Box = { x: pt.x - w / 2, y: pt.y - h / 2, w, h };
+
+          // 화면 밖/우측 금지 구역 회피
+          if (box.x < pad || box.y < pad || box.x + box.w > size.x - pad) continue;
+          if (box.y + box.h > size.y - pad) continue;
+          if (avoidRightPx > 0 && box.x + box.w > size.x - avoidRightPx) continue;
+
+          // 다른 라벨과 충돌 회피
+          if (taken.some((t) => boxesOverlap(t, box))) continue;
+
+          chosen = p;
+          taken.push(box);
+          break;
+        }
+
+        // 실패 시 12시 방향(겹치더라도)로 고정
+        if (!chosen) {
+          const p = offsetLatLngKm(center.lat, center.lng, km, -Math.PI / 2);
+          chosen = p;
+        }
+
+        out.push({ ...chosen, text });
+      }
+
+      if (!cancelled) setPlaced(out);
+    };
+
+    const t = window.setTimeout(compute, 80);
+    const onMove = () => compute();
+    map.on('moveend zoomend resize', onMove);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+      map.off('moveend zoomend resize', onMove);
+    };
+  }, [map, center.lat, center.lng, radiiKm.join(','), layoutKey, avoidRightPx]);
+
+  return (
+    <>
+      {placed.map((p) => (
+        <Marker
+          key={`${p.text}-${p.lat.toFixed(5)}-${p.lng.toFixed(5)}`}
+          position={[p.lat, p.lng]}
+          interactive={false}
+          icon={L.divIcon({
+            className: 'ring-label',
+            html: `<div style="background:rgba(255,255,255,0.92);border:1px solid rgba(24,24,27,0.18);border-radius:999px;padding:2px 6px;font-size:11px;font-weight:700;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,0.15);white-space:nowrap;">${p.text}</div>`,
+            iconSize: [0, 0],
+            iconAnchor: [0, 0],
+          })}
+        />
+      ))}
+    </>
+  );
+}
+
 function NationalFarmCircleMarker({
   n,
   role,
@@ -1489,6 +1617,14 @@ export function FarmMapPanel({
                 }}
               />
             ))}
+          {asfSideOpen && selectedAsfSite && (
+            <RingLabels
+              center={{ lat: selectedAsfSite.lat, lng: selectedAsfSite.lng }}
+              radiiKm={ASF_CONCENTRIC_CIRCLES.map((r) => r.radiusKm)}
+              layoutKey={`asf|${selectedAsfSite.id}|${mapLayoutKey}`}
+              avoidRightPx={mapRowSplit ? 260 : 0}
+            />
+          )}
 
           {probePoint &&
             PROBE_RADIUS_KM_STEPS.slice()
@@ -1520,6 +1656,14 @@ export function FarmMapPanel({
                   />
                 );
               })}
+          {probePoint && (
+            <RingLabels
+              center={{ lat: probePoint.lat, lng: probePoint.lng }}
+              radiiKm={[...PROBE_RADIUS_KM_STEPS]}
+              layoutKey={`probe|${probePoint.id}|${mapLayoutKey}`}
+              avoidRightPx={mapRowSplit ? 260 : 0}
+            />
+          )}
 
           {probePoint && (
             <Marker
