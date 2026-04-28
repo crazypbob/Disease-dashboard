@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { FARMS } from '@/lib/farms';
@@ -27,6 +27,8 @@ import {
   KOREA_JEJU_FIT_POINT,
 } from '@/lib/map-asf-rings';
 import { DEFAULT_VET_ASSIGNED_NAME } from '@/lib/viewer-constants';
+
+const PROBE_RADIUS_KM_STEPS = [0.5, 1, 2, 3, 5] as const;
 
 /** JSON에 없는 다비 시설 (데모 기준점용) */
 const EXTRA_LOCATIONS: FarmLocationRecord[] = [
@@ -129,6 +131,51 @@ function FitToAsfRings({
       { padding: [32, 32], maxZoom: 11, animate: true }
     );
   }, [map, lat, lng, ringKey]);
+  return null;
+}
+
+/** 사용자 지정 지점 기준 5km 반경이 보이도록 맞춤 */
+function FitToProbeRings({
+  lat,
+  lng,
+  ringKey,
+  maxKm = 5,
+}: {
+  lat: number;
+  lng: number;
+  ringKey: string;
+  maxKm?: number;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    const cos = Math.cos((lat * Math.PI) / 180);
+    const pad = Math.max(1.3, maxKm * 1.12);
+    const dLat = pad / 111;
+    const dLng = pad / (111 * Math.max(0.35, cos));
+    map.fitBounds(
+      [
+        [lat - dLat, lng - dLng],
+        [lat + dLat, lng + dLng],
+      ],
+      { padding: [32, 32], maxZoom: 12, animate: true }
+    );
+  }, [map, lat, lng, ringKey, maxKm]);
+  return null;
+}
+
+function MapClickProbe({
+  enabled,
+  onPick,
+}: {
+  enabled: boolean;
+  onPick: (lat: number, lng: number) => void;
+}) {
+  useMapEvents({
+    click: (e) => {
+      if (!enabled) return;
+      onPick(e.latlng.lat, e.latlng.lng);
+    },
+  });
   return null;
 }
 
@@ -391,6 +438,20 @@ export function FarmMapPanel({
     lng: number;
   } | null>(null);
 
+  const [probePoint, setProbePoint] = useState<{
+    id: string;
+    lat: number;
+    lng: number;
+    label: string;
+    source: 'search' | 'click';
+  } | null>(null);
+  const [probeQuery, setProbeQuery] = useState('');
+  const [probeSearching, setProbeSearching] = useState(false);
+  const [probeSearchError, setProbeSearchError] = useState<string | null>(null);
+  const [probeSearchResults, setProbeSearchResults] = useState<
+    Array<{ label: string; lat: number; lng: number }>
+  >([]);
+
   useEffect(() => {
     fixLeafletIcons();
   }, []);
@@ -401,6 +462,9 @@ export function FarmMapPanel({
     setGovFocusKey(null);
     setGovNationalAnchor(null);
     setSelectedAsfSite(null);
+    setProbePoint(null);
+    setProbeSearchResults([]);
+    setProbeSearchError(null);
     if (mappedRole === 'publicVet' && !publicVetRegionProp) setPublicVetRegion('gyeonggi');
     if (mappedRole !== 'publicVet') setPublicVetRegion(null);
   }, [mappedRole, publicVetRegionProp]);
@@ -583,6 +647,45 @@ export function FarmMapPanel({
       nat.map((n) => ({ livestockSeq: n.livestockSeq, lat: n.lat, lng: n.lng }))
     );
   }, [role, govAnchorCoords, govRadiusKm, dabiDedupedForMap, national]);
+
+  const probeNearbyRows = useMemo((): NearbyRow[] => {
+    if (!probePoint) return [];
+    return rowsWithinRadius(
+      probePoint.lat,
+      probePoint.lng,
+      5,
+      dabiForMap.map((f) => ({ farm_code: f.farm_code, lat: f.lat, lng: f.lng })),
+      nationalFarmsForMap.map((n) => ({ livestockSeq: n.livestockSeq, lat: n.lat, lng: n.lng }))
+    );
+  }, [probePoint, dabiForMap, nationalFarmsForMap]);
+
+  const probeCumulativeBuckets = useMemo(() => {
+    if (!probePoint) return [];
+    type Row = { code: string; km: number; typeLabel: string };
+    const rows: Row[] = [];
+    for (const f of dabiForMap) {
+      const km = haversineKm(probePoint.lat, probePoint.lng, f.lat, f.lng);
+      if (km <= 5) rows.push({ code: f.farm_code, km, typeLabel: '다비' });
+    }
+    for (const n of nationalFarmsForMap) {
+      const km = haversineKm(probePoint.lat, probePoint.lng, n.lat, n.lng);
+      if (km <= 5) rows.push({ code: n.livestockSeq, km, typeLabel: '행안부' });
+    }
+    rows.sort((a, b) => a.km - b.km);
+
+    const labels: Record<number, string> = {
+      0.5: '500m 이내 (누적)',
+      1: '1km 이내 (누적)',
+      2: '2km 이내 (누적)',
+      3: '3km 이내 (누적)',
+      5: '5km 이내 (누적)',
+    };
+    return PROBE_RADIUS_KM_STEPS.map((maxKm) => ({
+      label: labels[maxKm] ?? `${maxKm}km 이내`,
+      maxKm,
+      items: rows.filter((r) => r.km <= maxKm + 1e-9),
+    }));
+  }, [probePoint, dabiForMap, nationalFarmsForMap]);
 
   const govMockAnchorFarm = useMemo((): (FarmLocationRecord & { lat: number; lng: number }) | null => {
     if (govFocusFarm) return govFocusFarm;
@@ -801,11 +904,119 @@ export function FarmMapPanel({
   const govSideListOpen = role === 'government' && govAnchorCoords != null;
   const asfInteractiveRole = role === 'government' || role === 'publicVet';
   const asfSideOpen = asfInteractiveRole && selectedAsfSite != null;
-  const mapRowSplit = govSideListOpen || asfSideOpen;
+  const probeSideOpen = probePoint != null;
+  const mapRowSplit = govSideListOpen || asfSideOpen || probeSideOpen;
 
   return (
     <div className="flex flex-col gap-2">
       {/* 지도 역할/권역 선택은 상단 "로그인 주최"에서만 제어 */}
+
+      <div className="rounded-md border border-zinc-200 bg-white p-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-zinc-800">주소/지점 반경 조회</span>
+          <span className="text-[11px] text-zinc-600">
+            주소 검색 또는 지도 빈 곳 클릭 → 500m/1/2/3/5km 내 타농장(다비·행안부) 확인
+          </span>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <input
+            value={probeQuery}
+            onChange={(e) => setProbeQuery(e.target.value)}
+            placeholder="예: 경기도 이천시 마장면…"
+            className="w-[min(100%,22rem)] rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+          />
+          <button
+            type="button"
+            disabled={!probeQuery.trim() || probeSearching}
+            onClick={async () => {
+              const q = probeQuery.trim();
+              if (!q) return;
+              setProbeSearching(true);
+              setProbeSearchError(null);
+              setProbeSearchResults([]);
+              try {
+                const url = new URL('https://nominatim.openstreetmap.org/search');
+                url.searchParams.set('format', 'json');
+                url.searchParams.set('q', q);
+                url.searchParams.set('limit', '5');
+                url.searchParams.set('countrycodes', 'kr');
+                url.searchParams.set('accept-language', 'ko');
+                const res = await fetch(url.toString(), {
+                  headers: { 'Accept-Language': 'ko-KR,ko;q=0.9' },
+                });
+                if (!res.ok) throw new Error('주소 검색 실패');
+                const data = (await res.json()) as Array<{ display_name: string; lat: string; lon: string }>;
+                const rows = (data ?? [])
+                  .map((r) => ({
+                    label: r.display_name,
+                    lat: Number(r.lat),
+                    lng: Number(r.lon),
+                  }))
+                  .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+                setProbeSearchResults(rows);
+                if (rows.length === 0) setProbeSearchError('검색 결과가 없습니다.');
+              } catch (e) {
+                setProbeSearchError((e as Error).message);
+              } finally {
+                setProbeSearching(false);
+              }
+            }}
+            className="rounded bg-zinc-800 px-2.5 py-1 text-xs font-semibold text-white hover:bg-zinc-900 disabled:opacity-40"
+          >
+            {probeSearching ? '검색 중…' : '주소 검색'}
+          </button>
+          <button
+            type="button"
+            disabled={!probePoint}
+            onClick={() => {
+              setProbePoint(null);
+              setProbeSearchResults([]);
+              setProbeSearchError(null);
+            }}
+            className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+          >
+            조회 해제
+          </button>
+          {probePoint && (
+            <span className="rounded bg-zinc-50 px-2 py-1 text-[11px] text-zinc-700">
+              기준: {probePoint.label} ({probePoint.lat.toFixed(4)}, {probePoint.lng.toFixed(4)})
+            </span>
+          )}
+        </div>
+        {probeSearchError && <div className="mt-1 text-[11px] text-red-700">{probeSearchError}</div>}
+        {probeSearchResults.length > 0 && (
+          <div className="mt-2 max-h-40 overflow-auto rounded border border-zinc-200 bg-zinc-50 p-2">
+            <div className="mb-1 text-[11px] font-medium text-zinc-700">검색 결과</div>
+            <ul className="space-y-1">
+              {probeSearchResults.map((r, i) => (
+                <li key={`${r.lat}-${r.lng}-${i}`} className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1 truncate text-[11px] text-zinc-700" title={r.label}>
+                    {r.label}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGovFocusKey(null);
+                      setGovNationalAnchor(null);
+                      setSelectedAsfSite(null);
+                      setProbePoint({
+                        id: `probe-search-${Date.now()}`,
+                        lat: r.lat,
+                        lng: r.lng,
+                        label: r.label,
+                        source: 'search',
+                      });
+                    }}
+                    className="shrink-0 rounded border border-zinc-300 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                  >
+                    이 지점 조회
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
 
       {role === 'farmer' && (
         <CompactDemoFilters
@@ -1070,7 +1281,24 @@ export function FarmMapPanel({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {selectedAsfSite ? (
+          <MapClickProbe
+            enabled
+            onPick={(lat, lng) => {
+              setGovFocusKey(null);
+              setGovNationalAnchor(null);
+              setSelectedAsfSite(null);
+              setProbePoint({
+                id: `probe-click-${Date.now()}`,
+                lat,
+                lng,
+                label: '지도 클릭',
+                source: 'click',
+              });
+            }}
+          />
+          {probePoint ? (
+            <FitToProbeRings lat={probePoint.lat} lng={probePoint.lng} ringKey={probePoint.id} maxKm={5} />
+          ) : selectedAsfSite ? (
             <FitToAsfRings
               lat={selectedAsfSite.lat}
               lng={selectedAsfSite.lng}
@@ -1186,6 +1414,51 @@ export function FarmMapPanel({
               />
             ))}
 
+          {probePoint &&
+            PROBE_RADIUS_KM_STEPS.slice()
+              .reverse()
+              .map((km) => {
+                // 큰 원 먼저 그려 작은 원이 위로
+                const ring =
+                  km === 5
+                    ? { radiusKm: 5, color: '#0369a1', fillColor: '#0ea5e9', fillOpacity: 0.06, weight: 2 }
+                    : km === 3
+                      ? { radiusKm: 3, color: '#047857', fillColor: '#14b8a6', fillOpacity: 0.08, weight: 2 }
+                      : km === 2
+                        ? { radiusKm: 2, color: '#7c3aed', fillColor: '#a78bfa', fillOpacity: 0.09, weight: 2 }
+                        : km === 1
+                          ? { radiusKm: 1, color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.1, weight: 2 }
+                          : { radiusKm: 0.5, color: '#991b1b', fillColor: '#ef4444', fillOpacity: 0.12, weight: 3 };
+                return (
+                  <Circle
+                    key={`probe-ring-${km}`}
+                    center={[probePoint.lat, probePoint.lng]}
+                    radius={km * 1000}
+                    pathOptions={{
+                      color: ring.color,
+                      weight: ring.weight,
+                      opacity: 0.95,
+                      fillColor: ring.fillColor,
+                      fillOpacity: ring.fillOpacity,
+                    }}
+                  />
+                );
+              })}
+
+          {probePoint && (
+            <Marker position={[probePoint.lat, probePoint.lng]}>
+              <Popup>
+                <div className="text-sm">
+                  <div className="font-semibold">기준점</div>
+                  <div className="text-xs text-zinc-600">{probePoint.label}</div>
+                  <div className="text-xs text-zinc-500">
+                    500m·1·2·3·5km 반경 내 농장 여부를 우측 패널에서 확인
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          )}
+
           {showRadiusDemo && mockAnchorFarm && (
             <>
               <Circle
@@ -1282,6 +1555,59 @@ export function FarmMapPanel({
                   </div>
                 );
               })}
+            </div>
+          </aside>
+        )}
+
+        {probeSideOpen && !asfSideOpen && !govSideListOpen && probePoint && (
+          <aside className="flex h-[min(76vh,680px)] w-[20%] min-w-[10.5rem] max-w-[19rem] shrink-0 flex-col overflow-hidden rounded-lg border border-sky-200 bg-white shadow-sm">
+            <div className="shrink-0 border-b border-sky-100 bg-sky-50/80 p-2">
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <span className="text-[11px] font-semibold text-sky-950">반경 조회</span>
+                <button
+                  type="button"
+                  onClick={() => setProbePoint(null)}
+                  className="rounded border border-sky-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-sky-900 hover:bg-sky-50"
+                >
+                  닫기
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] leading-tight text-sky-900/80">
+                기준점 주변 500m·1·2·3·5km 이내 농장(다비/행안부) 누적 목록입니다.
+              </p>
+              <p className="mt-1 text-[10px] leading-tight text-zinc-600">
+                총 {probeNearbyRows.length}건(5km 이내)
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-1.5">
+              {probeCumulativeBuckets.map((bucket) => (
+                <div key={bucket.label} className="mb-3 border-b border-zinc-100 pb-2 last:mb-0 last:border-b-0">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-bold text-zinc-800">{bucket.label}</div>
+                    <div className="text-[10px] text-zinc-600">{bucket.items.length}건</div>
+                  </div>
+                  {bucket.items.length === 0 ? (
+                    <p className="text-[10px] text-zinc-400">해당 반경 내 없음</p>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {bucket.items.slice(0, 80).map((row, idx) => (
+                        <li
+                          key={`${bucket.label}-${row.typeLabel}-${row.code}-${idx}`}
+                          className="flex justify-between gap-1 font-mono text-[10px] text-zinc-800"
+                        >
+                          <span className="min-w-0 truncate" title={row.typeLabel}>
+                            {row.code}
+                          </span>
+                          <span className="shrink-0 text-zinc-500">{row.km.toFixed(2)}km</span>
+                        </li>
+                      ))}
+                      {bucket.items.length > 80 && (
+                        <li className="text-[10px] text-zinc-500">… {bucket.items.length - 80}건 더 있음</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              ))}
             </div>
           </aside>
         )}

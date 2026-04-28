@@ -19,6 +19,7 @@ import {
   getAbAgPairByDisease,
   getPrrsPair,
   mondayOfWeek,
+  singleLookupKey,
   pruneColumnsWithNoVisibleData,
   yearHeaderSpans,
   type MatrixColumn,
@@ -70,6 +71,7 @@ export type MatrixVerifyPick = {
   disease: string;
   assayLabel: string;
   result: string;
+  issueType: 'missing_record' | 'missing_link' | 'mismatch';
   recordId: number | null;
   pdfFileId: string | null;
 };
@@ -196,6 +198,14 @@ export function RecordsMatrix({
   const pathname = usePathname() ?? '/dashboard';
   const verifyMode = (sp?.get('verify') ?? '').trim() === '1';
   const [verifyPicks, setVerifyPicks] = useState<Record<string, MatrixVerifyPick>>({});
+  const [verifyDefaultIssueType, setVerifyDefaultIssueType] = useState<
+    MatrixVerifyPick['issueType']
+  >('mismatch');
+  /**
+   * verify=1에서 프리징이 심한 주 원인이 "셀마다 checkbox DOM"인 경우가 많아서,
+   * 기본은 클릭 선택(checkbox 미렌더)로 두고 필요 시만 켜도록 한다.
+   */
+  const [verifyRenderCellCheckboxes, setVerifyRenderCellCheckboxes] = useState(false);
   const [verifySendBusy, setVerifySendBusy] = useState(false);
   const [verifySendMsg, setVerifySendMsg] = useState<string | null>(null);
   const [verifySendErr, setVerifySendErr] = useState<string | null>(null);
@@ -305,6 +315,19 @@ export function RecordsMatrix({
     });
   }, []);
 
+  const updateVerifyPick = useCallback(
+    (key: string, patch: Partial<MatrixVerifyPick>) => {
+      setVerifyPicks((prev) => {
+        const cur = prev[key];
+        if (!cur) return prev;
+        const next = { ...prev };
+        next[key] = { ...cur, ...patch };
+        return next;
+      });
+    },
+    []
+  );
+
   const setVerifyModeUrl = useCallback(
     (on: boolean) => {
       const params = new URLSearchParams(sp?.toString() ?? '');
@@ -330,16 +353,66 @@ export function RecordsMatrix({
     });
     const header = `## 매트릭스 검증 후보 (${sorted.length}건)\n\n파싱·DB 이상 가능 셀로 표시했습니다. Cursor 등에 그대로 붙여넣기 하세요.\n\n`;
     const table =
-      '| # | 농장 | 코드 | 기간 | 질병 | 검사 | 결과 | record_id | pdf_file_id |\n|---:|---|---|---|---|---|---:|---|---|\n' +
+      '| # | 타입 | 농장 | 코드 | 기간 | 질병 | 검사 | 결과 | record_id | pdf_file_id |\n|---:|---|---|---|---|---|---|---:|---|---|\n' +
       sorted
         .map((r, i) => {
           const id = r.recordId != null ? String(r.recordId) : '—';
           const pdf = r.pdfFileId && r.pdfFileId.trim() !== '' ? r.pdfFileId.replace(/\|/g, ' ') : '—';
-          return `| ${i + 1} | ${r.farmLabel} | ${r.farmCode} | ${r.periodLabel} | ${r.disease} | ${r.assayLabel} | ${r.result} | ${id} | ${pdf} |`;
+          const t =
+            r.issueType === 'missing_record'
+              ? '빈칸(누락)'
+              : r.issueType === 'missing_link'
+                ? '링크없음'
+                : '오표기';
+          return `| ${i + 1} | ${t} | ${r.farmLabel} | ${r.farmCode} | ${r.periodLabel} | ${r.disease} | ${r.assayLabel} | ${r.result} | ${id} | ${pdf} |`;
         })
         .join('\n');
     return header + table;
   }, [verifyPicks]);
+
+  /**
+   * PRRS/AbAg 병합 셀은 기존 getPrrsPair/getAbAgPairByDisease가 per-cell filter를 하므로
+   * verify 모드(입력 DOM 증가)에서 프리징이 크게 악화될 수 있다.
+   * 렌더 전에 O(n)으로 pair map을 만들어 셀 렌더를 O(1)로 만든다.
+   */
+  const prrsPairMap = useMemo(() => {
+    const map = new Map<string, { ag: MatrixRecord | null; ab: MatrixRecord | null }>();
+    for (const r of records) {
+      if (r.disease.trim().toUpperCase() !== 'PRRS') continue;
+      const slot = prrsAssaySlot(r.test_type);
+      if (slot !== 'ag' && slot !== 'ab') continue;
+      const bucket = matrixGrain === 'week' ? mondayOfWeek(r.date) : r.date;
+      const key = `${r.farm_code}\t${bucket}`;
+      const cur = map.get(key) ?? { ag: null, ab: null };
+      if (slot === 'ag') {
+        if (!cur.ag || r.id > cur.ag.id) cur.ag = r;
+      } else {
+        if (!cur.ab || r.id > cur.ab.id) cur.ab = r;
+      }
+      map.set(key, cur);
+    }
+    return map;
+  }, [records, matrixGrain]);
+
+  const abAgPairMap = useMemo(() => {
+    const map = new Map<string, { ag: MatrixRecord | null; ab: MatrixRecord | null }>();
+    for (const r of records) {
+      const d = r.disease.trim().toUpperCase();
+      if (d !== 'MH' && d !== 'APP' && d !== 'SIV') continue;
+      const slot = prrsAssaySlot(r.test_type);
+      if (slot !== 'ag' && slot !== 'ab') continue;
+      const bucket = matrixGrain === 'week' ? mondayOfWeek(r.date) : r.date;
+      const key = `${r.farm_code}\t${bucket}\t${d}`;
+      const cur = map.get(key) ?? { ag: null, ab: null };
+      if (slot === 'ag') {
+        if (!cur.ag || r.id > cur.ag.id) cur.ag = r;
+      } else {
+        if (!cur.ab || r.id > cur.ab.id) cur.ab = r;
+      }
+      map.set(key, cur);
+    }
+    return map;
+  }, [records, matrixGrain]);
 
   useEffect(() => {
     setLoading(true);
@@ -429,6 +502,7 @@ export function RecordsMatrix({
     const raw = buildMatrixColumns(records, { granularity: matrixGrain });
     return pruneColumnsWithNoVisibleData(raw, records, visibleFarmCodes, matrixGrain);
   }, [records, visibleFarmCodes, matrixGrain]);
+  const columnKeySet = useMemo(() => new Set(columns.map((c) => c.key)), [columns]);
 
   const dateSpans = useMemo(() => dateHeaderSpans(columns), [columns]);
   const yearSpans = useMemo(() => yearHeaderSpans(dateSpans), [dateSpans]);
@@ -436,6 +510,98 @@ export function RecordsMatrix({
     () => buildSingleCellMap(records, columns, matrixGrain),
     [records, columns, matrixGrain]
   );
+
+  const visibleFarmCodeSet = useMemo(() => new Set(visibleFarmCodes), [visibleFarmCodes]);
+  const missingLinkCandidates = useMemo(() => {
+    if (!verifyMode) return [] as Array<{ key: string; pick: MatrixVerifyPick }>;
+
+    const farmLabel = (code: string) => farmDisplayLabel(code, effectiveAnonymize);
+    const periodLabelForBucket = (bucket: string) =>
+      matrixGrain === 'week' ? formatWeekRangeLabel(bucket) : bucket;
+
+    const result: Array<{ key: string; pick: MatrixVerifyPick }> = [];
+    for (const r of records) {
+      if (!visibleFarmCodeSet.has(r.farm_code)) continue;
+      const url = pdfViewUrl(r.id, r.pdf_file_id);
+      if (url) continue;
+
+      const bucket = matrixGrain === 'week' ? mondayOfWeek(r.date) : r.date;
+      const periodLabel = periodLabelForBucket(bucket);
+      const diseaseUpper = r.disease.trim().toUpperCase();
+      const slot = prrsAssaySlot(r.test_type);
+
+      if (diseaseUpper === 'PRRS' && (slot === 'ag' || slot === 'ab')) {
+        const colKey = `PRRS_MERGED\t${bucket}`;
+        if (!columnKeySet.has(colKey)) continue;
+        const vKey = `v1|${r.farm_code}|${colKey}|PRRS|${slot}|${r.id}`;
+        const assayLabel = slot === 'ag' ? 'Ag (PCR)' : 'Ab (ELISA)';
+        result.push({
+          key: vKey,
+          pick: {
+            farmCode: r.farm_code,
+            farmLabel: farmLabel(r.farm_code),
+            periodLabel,
+            disease: 'PRRS',
+            assayLabel,
+            result: parseTestResult(r.result, { disease: r.disease, testType: r.test_type }).symbol,
+            issueType: 'missing_link',
+            recordId: r.id,
+            pdfFileId: r.pdf_file_id,
+          },
+        });
+        continue;
+      }
+
+      if ((diseaseUpper === 'MH' || diseaseUpper === 'APP' || diseaseUpper === 'SIV') && (slot === 'ag' || slot === 'ab')) {
+        const colKey = `ABAG_MERGED\t${diseaseUpper}\t${bucket}`;
+        if (!columnKeySet.has(colKey)) continue;
+        const vKey = `v1|${r.farm_code}|${colKey}|${diseaseUpper}|${slot}|${r.id}`;
+        const assayLabel = slot === 'ag' ? 'Ag (PCR)' : 'Ab (ELISA)';
+        result.push({
+          key: vKey,
+          pick: {
+            farmCode: r.farm_code,
+            farmLabel: farmLabel(r.farm_code),
+            periodLabel,
+            disease: r.disease,
+            assayLabel,
+            result: parseTestResult(r.result, { disease: r.disease, testType: r.test_type }).symbol,
+            issueType: 'missing_link',
+            recordId: r.id,
+            pdfFileId: r.pdf_file_id,
+          },
+        });
+        continue;
+      }
+
+      const colKey = matrixGrain === 'week' ? singleLookupKey(r, 'week') : `${r.date}\t${r.test_type}\t${r.disease}`;
+      if (!columnKeySet.has(colKey)) continue;
+      const vKey = `v1|${r.farm_code}|${colKey}|single|${r.id}`;
+      result.push({
+        key: vKey,
+        pick: {
+          farmCode: r.farm_code,
+          farmLabel: farmLabel(r.farm_code),
+          periodLabel,
+          disease: r.disease,
+          assayLabel: formatAssayLabel(r.test_type),
+          result: parseTestResult(r.result, { disease: r.disease, testType: r.test_type }).symbol,
+          issueType: 'missing_link',
+          recordId: r.id,
+          pdfFileId: r.pdf_file_id,
+        },
+      });
+    }
+
+    const seen = new Set<string>();
+    const uniq: Array<{ key: string; pick: MatrixVerifyPick }> = [];
+    for (const x of result) {
+      if (seen.has(x.key)) continue;
+      seen.add(x.key);
+      uniq.push(x);
+    }
+    return uniq;
+  }, [verifyMode, records, visibleFarmCodeSet, columnKeySet, matrixGrain, effectiveAnonymize]);
 
   const farmColWidthPx = 66;
   const matrixTableWidthPx = useMemo(
@@ -584,10 +750,57 @@ export function RecordsMatrix({
     const cEdge = cellEdge(isDateGroupStart);
 
     if (col.kind === 'prrs_merged') {
-      const pair = getPrrsPair(records, code, col.date, matrixGrain);
+      const pair = prrsPairMap.get(`${code}\t${col.date}`) ?? { ag: null, ab: null };
       const hasData = pair.ag || pair.ab;
       if (!hasData) {
         const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
+        if (verifyMode) {
+          const vKey = `v1|${code}|${col.key}|missing_record`;
+          const pkEmpty: MatrixVerifyPick = {
+            farmCode: code,
+            farmLabel: fl,
+            periodLabel: pl,
+            disease: 'PRRS',
+            assayLabel: 'Ag/Ab',
+            result: '—',
+            issueType: 'missing_record',
+            recordId: null,
+            pdfFileId: null,
+          };
+          const checked = Boolean(verifyPicks[vKey]);
+          return (
+            <td
+              key={col.key}
+              className={`${cEdge} ${bodyTdBase} px-1 py-1 ${rowBg} ${
+                checked ? 'relative ring-2 ring-inset ring-amber-400/60' : ''
+              }`}
+              onClick={() => toggleVerifyPick(vKey, pkEmpty, !checked)}
+              role="button"
+              tabIndex={0}
+              title="빈칸: 데이터 누락(레코드 없음)"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleVerifyPick(vKey, pkEmpty, !checked);
+                }
+              }}
+            >
+              {verifyRenderCellCheckboxes && (
+                <div className="mb-0.5 flex justify-center">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => toggleVerifyPick(vKey, pkEmpty, e.target.checked)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-2.5 w-2.5 cursor-pointer accent-amber-600"
+                    aria-label="빈칸(누락) 검증 목록에 넣기"
+                  />
+                </div>
+              )}
+              <span className="text-[10px] text-zinc-300">—</span>
+            </td>
+          );
+        }
         return (
           <td
             key={col.key}
@@ -612,6 +825,12 @@ export function RecordsMatrix({
             disease: pair.ag.disease,
             testType: pair.ag.test_type,
           }).symbol,
+          issueType:
+            verifyDefaultIssueType === 'mismatch'
+              ? 'mismatch'
+              : pdfViewUrl(pair.ag.id, pair.ag.pdf_file_id)
+                ? verifyDefaultIssueType
+                : 'missing_link',
           recordId: pair.ag.id,
           pdfFileId: pair.ag.pdf_file_id,
         } satisfies MatrixVerifyPick);
@@ -627,6 +846,12 @@ export function RecordsMatrix({
             disease: pair.ab.disease,
             testType: pair.ab.test_type,
           }).symbol,
+          issueType:
+            verifyDefaultIssueType === 'mismatch'
+              ? 'mismatch'
+              : pdfViewUrl(pair.ab.id, pair.ab.pdf_file_id)
+                ? verifyDefaultIssueType
+                : 'missing_link',
           recordId: pair.ab.id,
           pdfFileId: pair.ab.pdf_file_id,
         } satisfies MatrixVerifyPick);
@@ -644,18 +869,26 @@ export function RecordsMatrix({
           >
             {showAg && pair.ag && pkAg && (
               <label
-                className={`flex min-w-0 flex-col items-center gap-0.5 ${verifyPicks[keyAg] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
+                className={`flex min-w-0 flex-col items-center gap-0.5 ${
+                  verifyPicks[keyAg] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''
+                } ${
+                  verifyMode && pair.ag && !pdfViewUrl(pair.ag.id, pair.ag.pdf_file_id)
+                    ? 'rounded bg-rose-50/60 ring-1 ring-rose-300/70'
+                    : ''
+                }`}
                 title="항원 (PCR)"
               >
                 {verifyMode && (
-                  <input
-                    type="checkbox"
-                    checked={Boolean(verifyPicks[keyAg])}
-                    onChange={(e) => toggleVerifyPick(keyAg, pkAg, e.target.checked)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mb-0.5 h-2.5 w-2.5 cursor-pointer accent-amber-600"
-                    aria-label="검증 목록에 넣기"
-                  />
+                  verifyRenderCellCheckboxes ? (
+                    <input
+                      type="checkbox"
+                      checked={Boolean(verifyPicks[keyAg])}
+                      onChange={(e) => toggleVerifyPick(keyAg, pkAg, e.target.checked)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mb-0.5 h-2.5 w-2.5 cursor-pointer accent-amber-600"
+                      aria-label="검증 목록에 넣기"
+                    />
+                  ) : null
                 )}
                 <span className="text-[8px] font-medium text-zinc-400">Ag</span>
                 <ResultGlyph record={pair.ag} compact />
@@ -663,18 +896,26 @@ export function RecordsMatrix({
             )}
             {showAb && pair.ab && pkAb && (
               <label
-                className={`flex min-w-0 flex-col items-center gap-0.5 ${verifyPicks[keyAb] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
+                className={`flex min-w-0 flex-col items-center gap-0.5 ${
+                  verifyPicks[keyAb] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''
+                } ${
+                  verifyMode && pair.ab && !pdfViewUrl(pair.ab.id, pair.ab.pdf_file_id)
+                    ? 'rounded bg-rose-50/60 ring-1 ring-rose-300/70'
+                    : ''
+                }`}
                 title="항체 (ELISA)"
               >
                 {verifyMode && (
-                  <input
-                    type="checkbox"
-                    checked={Boolean(verifyPicks[keyAb])}
-                    onChange={(e) => toggleVerifyPick(keyAb, pkAb, e.target.checked)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mb-0.5 h-2.5 w-2.5 cursor-pointer accent-amber-600"
-                    aria-label="검증 목록에 넣기"
-                  />
+                  verifyRenderCellCheckboxes ? (
+                    <input
+                      type="checkbox"
+                      checked={Boolean(verifyPicks[keyAb])}
+                      onChange={(e) => toggleVerifyPick(keyAb, pkAb, e.target.checked)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mb-0.5 h-2.5 w-2.5 cursor-pointer accent-amber-600"
+                      aria-label="검증 목록에 넣기"
+                    />
+                  ) : null
                 )}
                 <span className="text-[8px] font-medium text-zinc-400">Ab</span>
                 <ResultGlyph record={pair.ab} compact />
@@ -685,10 +926,58 @@ export function RecordsMatrix({
       );
     }
     if (col.kind === 'ab_ag_merged') {
-      const { ag, ab } = getAbAgPairByDisease(records, code, col.date, col.disease, matrixGrain);
+      const dKey = col.disease.trim().toUpperCase();
+      const { ag, ab } = abAgPairMap.get(`${code}\t${col.date}\t${dKey}`) ?? { ag: null, ab: null };
       const hasData = ag || ab;
       const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
       if (!hasData) {
+        if (verifyMode) {
+          const vKey = `v1|${code}|${col.key}|missing_record`;
+          const pkEmpty: MatrixVerifyPick = {
+            farmCode: code,
+            farmLabel: fl,
+            periodLabel: pl,
+            disease: col.disease,
+            assayLabel: 'Ag/Ab',
+            result: '—',
+            issueType: 'missing_record',
+            recordId: null,
+            pdfFileId: null,
+          };
+          const checked = Boolean(verifyPicks[vKey]);
+          return (
+            <td
+              key={col.key}
+              className={`${cEdge} ${bodyTdBase} px-1 py-1 ${rowBg} ${
+                checked ? 'relative ring-2 ring-inset ring-amber-400/60' : ''
+              }`}
+              onClick={() => toggleVerifyPick(vKey, pkEmpty, !checked)}
+              role="button"
+              tabIndex={0}
+              title="빈칸: 데이터 누락(레코드 없음)"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleVerifyPick(vKey, pkEmpty, !checked);
+                }
+              }}
+            >
+              {verifyRenderCellCheckboxes && (
+                <div className="mb-0.5 flex justify-center">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => toggleVerifyPick(vKey, pkEmpty, e.target.checked)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-2.5 w-2.5 cursor-pointer accent-amber-600"
+                    aria-label="빈칸(누락) 검증 목록에 넣기"
+                  />
+                </div>
+              )}
+              <span className="text-[10px] text-zinc-300">—</span>
+            </td>
+          );
+        }
         return (
           <td
             key={col.key}
@@ -710,6 +999,12 @@ export function RecordsMatrix({
           disease: col.disease,
           assayLabel: 'Ag (PCR)',
           result: parseTestResult(ag.result, { disease: ag.disease, testType: ag.test_type }).symbol,
+          issueType:
+            verifyDefaultIssueType === 'mismatch'
+              ? 'mismatch'
+              : pdfViewUrl(ag.id, ag.pdf_file_id)
+                ? verifyDefaultIssueType
+                : 'missing_link',
           recordId: ag.id,
           pdfFileId: ag.pdf_file_id,
         } satisfies MatrixVerifyPick);
@@ -722,6 +1017,12 @@ export function RecordsMatrix({
           disease: col.disease,
           assayLabel: 'Ab (ELISA)',
           result: parseTestResult(ab.result, { disease: ab.disease, testType: ab.test_type }).symbol,
+          issueType:
+            verifyDefaultIssueType === 'mismatch'
+              ? 'mismatch'
+              : pdfViewUrl(ab.id, ab.pdf_file_id)
+                ? verifyDefaultIssueType
+                : 'missing_link',
           recordId: ab.id,
           pdfFileId: ab.pdf_file_id,
         } satisfies MatrixVerifyPick);
@@ -739,18 +1040,22 @@ export function RecordsMatrix({
           >
             {showAg && ag && pkAg && (
               <label
-                className={`flex min-w-0 flex-col items-center gap-0.5 ${verifyPicks[keyAg] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
+                className={`flex min-w-0 flex-col items-center gap-0.5 ${
+                  verifyPicks[keyAg] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''
+                } ${verifyMode && ag && !pdfViewUrl(ag.id, ag.pdf_file_id) ? 'rounded bg-rose-50/60 ring-1 ring-rose-300/70' : ''}`}
                 title="항원 (PCR)"
               >
                 {verifyMode && (
-                  <input
-                    type="checkbox"
-                    checked={Boolean(verifyPicks[keyAg])}
-                    onChange={(e) => toggleVerifyPick(keyAg, pkAg, e.target.checked)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mb-0.5 h-2.5 w-2.5 cursor-pointer accent-amber-600"
-                    aria-label="검증 목록에 넣기"
-                  />
+                  verifyRenderCellCheckboxes ? (
+                    <input
+                      type="checkbox"
+                      checked={Boolean(verifyPicks[keyAg])}
+                      onChange={(e) => toggleVerifyPick(keyAg, pkAg, e.target.checked)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mb-0.5 h-2.5 w-2.5 cursor-pointer accent-amber-600"
+                      aria-label="검증 목록에 넣기"
+                    />
+                  ) : null
                 )}
                 <span className="text-[8px] font-medium text-zinc-400">Ag</span>
                 <ResultGlyph record={ag} compact />
@@ -758,18 +1063,22 @@ export function RecordsMatrix({
             )}
             {showAb && ab && pkAb && (
               <label
-                className={`flex min-w-0 flex-col items-center gap-0.5 ${verifyPicks[keyAb] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''}`}
+                className={`flex min-w-0 flex-col items-center gap-0.5 ${
+                  verifyPicks[keyAb] ? 'rounded bg-amber-50/90 ring-1 ring-amber-400/70' : ''
+                } ${verifyMode && ab && !pdfViewUrl(ab.id, ab.pdf_file_id) ? 'rounded bg-rose-50/60 ring-1 ring-rose-300/70' : ''}`}
                 title="항체 (ELISA)"
               >
                 {verifyMode && (
-                  <input
-                    type="checkbox"
-                    checked={Boolean(verifyPicks[keyAb])}
-                    onChange={(e) => toggleVerifyPick(keyAb, pkAb, e.target.checked)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mb-0.5 h-2.5 w-2.5 cursor-pointer accent-amber-600"
-                    aria-label="검증 목록에 넣기"
-                  />
+                  verifyRenderCellCheckboxes ? (
+                    <input
+                      type="checkbox"
+                      checked={Boolean(verifyPicks[keyAb])}
+                      onChange={(e) => toggleVerifyPick(keyAb, pkAb, e.target.checked)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mb-0.5 h-2.5 w-2.5 cursor-pointer accent-amber-600"
+                      aria-label="검증 목록에 넣기"
+                    />
+                  ) : null
                 )}
                 <span className="text-[8px] font-medium text-zinc-400">Ab</span>
                 <ResultGlyph record={ab} compact />
@@ -783,6 +1092,53 @@ export function RecordsMatrix({
     const cell = singleCellMap.get(code)?.get(col.key);
     if (!cell) {
       const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
+      if (verifyMode) {
+        const vKey = `v1|${code}|${col.key}|missing_record`;
+        const pkEmpty: MatrixVerifyPick = {
+          farmCode: code,
+          farmLabel: fl,
+          periodLabel: pl,
+          disease: col.disease,
+          assayLabel: formatAssayLabel(col.test_type),
+          result: '—',
+          issueType: 'missing_record',
+          recordId: null,
+          pdfFileId: null,
+        };
+        const checked = Boolean(verifyPicks[vKey]);
+        return (
+          <td
+            key={col.key}
+            className={`${cEdge} ${bodyTdBase} px-1 py-0.5 text-xs ${rowBg} ${
+              checked ? 'relative ring-2 ring-inset ring-amber-400/60' : ''
+            }`}
+            onClick={() => toggleVerifyPick(vKey, pkEmpty, !checked)}
+            role="button"
+            tabIndex={0}
+            title="빈칸: 데이터 누락(레코드 없음)"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleVerifyPick(vKey, pkEmpty, !checked);
+              }
+            }}
+          >
+            {verifyRenderCellCheckboxes && (
+              <div className="mb-0.5 flex justify-center">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => toggleVerifyPick(vKey, pkEmpty, e.target.checked)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-2.5 w-2.5 cursor-pointer accent-amber-600"
+                  aria-label="빈칸(누락) 검증 목록에 넣기"
+                />
+              </div>
+            )}
+            <span className="text-zinc-300">—</span>
+          </td>
+        );
+      }
       return (
         <td
           key={col.key}
@@ -822,29 +1178,39 @@ export function RecordsMatrix({
       disease: col.disease,
       assayLabel: formatAssayLabel(col.test_type),
       result: symbol,
+      issueType:
+        verifyDefaultIssueType === 'mismatch'
+          ? 'mismatch'
+          : url
+            ? verifyDefaultIssueType
+            : 'missing_link',
       recordId: cell.id,
       pdfFileId: cell.pdf_file_id,
     };
 
     const rowBg = rowIndex % 2 === 0 ? 'bg-white' : 'bg-zinc-50';
+    const missingLink = verifyMode && !url;
     return (
       <td
         key={col.key}
         className={`${cEdge} ${bodyTdBase} px-1 py-0.5 text-xs ${rowBg} ${
           verifyPicks[vKey] ? 'relative ring-2 ring-inset ring-amber-400/60' : ''
-        }`}
+        } ${missingLink ? 'bg-rose-50/40' : ''}`}
+        title={missingLink ? '링크 없음: pdf_file_id 매칭 실패/누락' : undefined}
       >
         {verifyMode && (
-          <div className="mb-0.5 flex justify-center">
-            <input
-              type="checkbox"
-              checked={Boolean(verifyPicks[vKey])}
-              onChange={(e) => toggleVerifyPick(vKey, pkSingle, e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-              className="h-2.5 w-2.5 cursor-pointer accent-amber-600"
-              aria-label="검증 목록에 넣기"
-            />
-          </div>
+          verifyRenderCellCheckboxes ? (
+            <div className="mb-0.5 flex justify-center">
+              <input
+                type="checkbox"
+                checked={Boolean(verifyPicks[vKey])}
+                onChange={(e) => toggleVerifyPick(vKey, pkSingle, e.target.checked)}
+                onClick={(e) => e.stopPropagation()}
+                className="h-2.5 w-2.5 cursor-pointer accent-amber-600"
+                aria-label="검증 목록에 넣기"
+              />
+            </div>
+          ) : null
         )}
         {url ? (
           <span
@@ -1029,6 +1395,72 @@ export function RecordsMatrix({
               </div>
               {verifyMode && (
                 <>
+                  <span className="hidden md:inline text-[11px] text-zinc-600">마킹 기본:</span>
+                  <div className="flex rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setVerifyDefaultIssueType('mismatch')}
+                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                        verifyDefaultIssueType === 'mismatch'
+                          ? 'bg-white text-zinc-800 shadow-sm'
+                          : 'text-zinc-600 hover:text-zinc-800'
+                      }`}
+                      title="PDF 보고 오표기(불일치)로 마킹"
+                    >
+                      오표기
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVerifyDefaultIssueType('missing_link')}
+                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                        verifyDefaultIssueType === 'missing_link'
+                          ? 'bg-white text-zinc-800 shadow-sm'
+                          : 'text-zinc-600 hover:text-zinc-800'
+                      }`}
+                      title="링크 매칭 실패(링크 없음)로 마킹"
+                    >
+                      링크없음
+                    </button>
+                  </div>
+                  <label className="flex items-center gap-1.5 text-[11px] text-zinc-600">
+                    <input
+                      type="checkbox"
+                      checked={verifyRenderCellCheckboxes}
+                      onChange={(e) => setVerifyRenderCellCheckboxes(e.target.checked)}
+                      className="h-3 w-3 rounded border-zinc-300"
+                    />
+                    셀 체크박스 표시(무거움)
+                  </label>
+                  <button
+                    type="button"
+                    disabled={missingLinkCandidates.length === 0}
+                    onClick={() => {
+                      setVerifyPicks((prev) => {
+                        const next = { ...prev };
+                        for (const c of missingLinkCandidates) next[c.key] = c.pick;
+                        return next;
+                      });
+                      setVerifyDefaultIssueType('missing_link');
+                    }}
+                    className="rounded border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="현재 화면 범위에서 링크 없는 레코드를 자동으로 선택 목록에 추가"
+                  >
+                    링크없음 추가({missingLinkCandidates.length})
+                  </button>
+                  <button
+                    type="button"
+                    disabled={missingLinkCandidates.length === 0}
+                    onClick={() => {
+                      const next: Record<string, MatrixVerifyPick> = {};
+                      for (const c of missingLinkCandidates) next[c.key] = c.pick;
+                      setVerifyPicks(next);
+                      setVerifyDefaultIssueType('missing_link');
+                    }}
+                    className="rounded border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="선택 목록을 ‘링크없음’ 후보만으로 교체"
+                  >
+                    링크없음만 선택
+                  </button>
                   <span className="text-[11px] text-zinc-600">{Object.keys(verifyPicks).length}개 선택</span>
                   <button
                     type="button"
@@ -1078,9 +1510,10 @@ export function RecordsMatrix({
                   </button>
                   <details className="rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600">
                     <summary className="cursor-pointer select-none font-medium text-zinc-700 hover:text-zinc-900">
-                      고급: 마크다운 복사
+                      고급: 선택 목록/타입 수정
                     </summary>
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2 space-y-2">
+                      <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         disabled={Object.keys(verifyPicks).length === 0 || !verifyExportMarkdown}
@@ -1094,6 +1527,48 @@ export function RecordsMatrix({
                       <span className="self-center text-[10px] text-zinc-500">
                         Cursor 등에 붙여넣을 때만 사용. 기본은 위 「관리자에게 전송」입니다.
                       </span>
+                      </div>
+                      {Object.keys(verifyPicks).length > 0 && (
+                        <div className="max-h-56 overflow-auto rounded border border-zinc-200 bg-zinc-50 p-2">
+                          <div className="mb-1 text-[10px] font-medium text-zinc-600">
+                            선택 항목 {Object.keys(verifyPicks).length}건 (타입 변경 가능)
+                          </div>
+                          <div className="space-y-1">
+                            {Object.entries(verifyPicks).map(([k, r]) => (
+                              <div
+                                key={k}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded bg-white px-2 py-1"
+                              >
+                                <div className="min-w-0 text-[10px] text-zinc-700">
+                                  <span className="font-semibold">{r.farmCode}</span> {r.periodLabel} · {r.disease} ·{' '}
+                                  {r.assayLabel} · {r.result}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    value={r.issueType}
+                                    onChange={(e) =>
+                                      updateVerifyPick(k, { issueType: e.target.value as MatrixVerifyPick['issueType'] })
+                                    }
+                                    className="rounded border border-zinc-300 bg-white px-1 py-0.5 text-[10px]"
+                                    aria-label="검증 타입 변경"
+                                  >
+                                    <option value="mismatch">오표기</option>
+                                    <option value="missing_link">링크없음</option>
+                                    <option value="missing_record">빈칸(누락)</option>
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleVerifyPick(k, null, false)}
+                                    className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] text-zinc-700 hover:bg-zinc-50"
+                                  >
+                                    제거
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </details>
                   <button
@@ -1159,7 +1634,7 @@ export function RecordsMatrix({
             <span className="font-semibold text-emerald-600">-</span> (밑줄=원본 PDF)
             {verifyMode && (
               <span className="ml-2 text-amber-900">
-                · 검증 모드: 의심 칸을 체크한 뒤 「관리자에게 전송」으로 접수(DB·이메일, 설정 시). 필요 시 고급 메뉴에서 마크다운 복사.
+                · 검증 모드: 체크(빈칸/링크없음/오표기)를 모아 「관리자에게 전송」으로 접수(DB·이메일, 설정 시). 빈칸도 클릭하면 선택됩니다.
               </span>
             )}
           </p>
