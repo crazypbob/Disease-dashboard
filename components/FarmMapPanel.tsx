@@ -463,7 +463,7 @@ export function FarmMapPanel({
     lat: number;
     lng: number;
     label: string;
-    source: 'search' | 'click';
+    source: 'search' | 'click' | 'drag';
   } | null>(null);
   const [probeQuery, setProbeQuery] = useState('');
   const [probeSearching, setProbeSearching] = useState(false);
@@ -1522,11 +1522,34 @@ export function FarmMapPanel({
               })}
 
           {probePoint && (
-            <Marker position={[probePoint.lat, probePoint.lng]}>
+            <Marker
+              position={[probePoint.lat, probePoint.lng]}
+              draggable
+              eventHandlers={{
+                dragend: (e) => {
+                  const m = e.target as L.Marker;
+                  const ll = m.getLatLng();
+                  setProbePoint((prev) => {
+                    if (!prev) return prev;
+                    return {
+                      ...prev,
+                      id: `probe-drag-${Date.now()}`,
+                      lat: ll.lat,
+                      lng: ll.lng,
+                      label: prev.source === 'search' ? `${prev.label} (드래그 수정)` : '지도 클릭 (드래그 수정)',
+                      source: 'drag',
+                    };
+                  });
+                },
+              }}
+            >
               <Popup>
                 <div className="text-sm">
                   <div className="font-semibold">기준점</div>
                   <div className="text-xs text-zinc-600">{probePoint.label}</div>
+                  <div className="mt-0.5 text-[11px] text-zinc-600">
+                    마커를 <span className="font-semibold">드래그</span>해서 정확한 위치로 조정할 수 있습니다.
+                  </div>
                   <div className="text-xs text-zinc-500">
                     500m·1·2·3·5km 반경 내 농장 여부를 우측 패널에서 확인
                   </div>
