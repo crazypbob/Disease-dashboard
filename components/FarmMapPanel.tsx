@@ -317,7 +317,7 @@ function RingLabels({
           interactive={false}
           icon={L.divIcon({
             className: 'ring-label',
-            html: `<div style="background:rgba(255,255,255,0.92);border:1px solid rgba(24,24,27,0.18);border-radius:999px;padding:2px 6px;font-size:11px;font-weight:700;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,0.15);white-space:nowrap;">${p.text}</div>`,
+            html: `<div style="background:#ffffff;border:1px solid rgba(15,23,42,0.28);border-radius:10px;padding:4px 8px;font-size:12px;font-weight:800;letter-spacing:-0.2px;color:#0f172a;box-shadow:0 2px 6px rgba(0,0,0,0.22);white-space:nowrap;line-height:1;">${p.text}</div>`,
             iconSize: [0, 0],
             iconAnchor: [0, 0],
           })}
