@@ -448,8 +448,9 @@ export function FarmMapPanel({
   const [probeQuery, setProbeQuery] = useState('');
   const [probeSearching, setProbeSearching] = useState(false);
   const [probeSearchError, setProbeSearchError] = useState<string | null>(null);
+  const [probeSearchNote, setProbeSearchNote] = useState<string | null>(null);
   const [probeSearchResults, setProbeSearchResults] = useState<
-    Array<{ label: string; lat: number; lng: number }>
+    Array<{ label: string; lat: number; lng: number; exact?: boolean; houseNumber?: string | null }>
   >([]);
 
   useEffect(() => {
@@ -465,6 +466,7 @@ export function FarmMapPanel({
     setProbePoint(null);
     setProbeSearchResults([]);
     setProbeSearchError(null);
+    setProbeSearchNote(null);
     if (mappedRole === 'publicVet' && !publicVetRegionProp) setPublicVetRegion('gyeonggi');
     if (mappedRole !== 'publicVet') setPublicVetRegion(null);
   }, [mappedRole, publicVetRegionProp]);
@@ -933,28 +935,57 @@ export function FarmMapPanel({
               if (!q) return;
               setProbeSearching(true);
               setProbeSearchError(null);
+              setProbeSearchNote(null);
               setProbeSearchResults([]);
               try {
+                // 간단 파서: "도로명 12-34" 또는 "... 123" 형태면 번지를 추출해 정확 매칭 여부를 표시한다.
+                const m = q.match(/^(.*?)(\d+(?:-\d+)?)\s*$/);
+                const maybeRoad = (m?.[1] ?? '').trim();
+                const maybeHouse = (m?.[2] ?? '').trim();
+                const expectHouse = maybeRoad && maybeHouse ? maybeHouse : null;
+
                 const url = new URL('https://nominatim.openstreetmap.org/search');
-                url.searchParams.set('format', 'json');
+                url.searchParams.set('format', 'jsonv2');
                 url.searchParams.set('q', q);
                 url.searchParams.set('limit', '5');
                 url.searchParams.set('countrycodes', 'kr');
                 url.searchParams.set('accept-language', 'ko');
+                url.searchParams.set('addressdetails', '1');
+                // 한국 bbox로 한정(해외 유사 주소 억제)
+                url.searchParams.set('viewbox', '123.5,39.25,132.8,30.8');
+                url.searchParams.set('bounded', '1');
                 const res = await fetch(url.toString(), {
                   headers: { 'Accept-Language': 'ko-KR,ko;q=0.9' },
                 });
                 if (!res.ok) throw new Error('주소 검색 실패');
-                const data = (await res.json()) as Array<{ display_name: string; lat: string; lon: string }>;
-                const rows = (data ?? [])
+                const data = (await res.json()) as Array<{
+                  display_name: string;
+                  lat: string;
+                  lon: string;
+                  address?: { house_number?: string; road?: string };
+                }>;
+                const rowsRaw = (data ?? [])
                   .map((r) => ({
                     label: r.display_name,
                     lat: Number(r.lat),
                     lng: Number(r.lon),
+                    houseNumber: r.address?.house_number ?? null,
+                    exact: expectHouse ? String(r.address?.house_number ?? '').trim() === expectHouse : undefined,
                   }))
                   .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+                // exact 매칭이 있으면 위로 올리고, 없으면 “근사”임을 안내한다.
+                const hasExact = expectHouse ? rowsRaw.some((r) => r.exact) : false;
+                const rows = hasExact
+                  ? [...rowsRaw].sort((a, b) => Number(Boolean(b.exact)) - Number(Boolean(a.exact)))
+                  : rowsRaw;
                 setProbeSearchResults(rows);
-                if (rows.length === 0) setProbeSearchError('검색 결과가 없습니다.');
+                if (rows.length === 0) {
+                  setProbeSearchError('검색 결과가 없습니다.');
+                } else if (expectHouse && !hasExact) {
+                  setProbeSearchNote(
+                    `입력한 번지(${expectHouse})가 OpenStreetMap 데이터에 정확히 없을 수 있어요. 아래 결과는 ‘같은 도로 주변’ 근사 결과일 수 있습니다.`
+                  );
+                }
               } catch (e) {
                 setProbeSearchError((e as Error).message);
               } finally {
@@ -984,6 +1015,11 @@ export function FarmMapPanel({
           )}
         </div>
         {probeSearchError && <div className="mt-1 text-[11px] text-red-700">{probeSearchError}</div>}
+        {probeSearchNote && !probeSearchError && (
+          <div className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900">
+            {probeSearchNote}
+          </div>
+        )}
         {probeSearchResults.length > 0 && (
           <div className="mt-2 max-h-40 overflow-auto rounded border border-zinc-200 bg-zinc-50 p-2">
             <div className="mb-1 text-[11px] font-medium text-zinc-700">검색 결과</div>
@@ -991,6 +1027,15 @@ export function FarmMapPanel({
               {probeSearchResults.map((r, i) => (
                 <li key={`${r.lat}-${r.lng}-${i}`} className="flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1 truncate text-[11px] text-zinc-700" title={r.label}>
+                    {r.exact ? (
+                      <span className="mr-1 rounded bg-emerald-50 px-1 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-200">
+                        정확
+                      </span>
+                    ) : (
+                      <span className="mr-1 rounded bg-zinc-100 px-1 py-0.5 text-[10px] font-medium text-zinc-600 ring-1 ring-zinc-200">
+                        근사
+                      </span>
+                    )}
                     {r.label}
                   </div>
                   <button
